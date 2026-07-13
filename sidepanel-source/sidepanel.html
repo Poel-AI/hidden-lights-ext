@@ -1201,6 +1201,36 @@
       margin: 2px 0;
       color: #334155;
     }
+    .bcba-directory-saved {
+      color: #64748b;
+      margin: 0 0 6px 0;
+      font-size: 11px;
+    }
+    .bcba-directory-ids {
+      margin: 0 0 10px 0;
+      padding: 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .bcba-directory-ids-title {
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+    .bcba-directory-ids-list {
+      margin: 0;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: #1e293b;
+      line-height: 1.45;
+    }
+    .bcba-client-id {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 600;
+      color: #0f172a;
+    }
   </style>
 </head>
 <body>
@@ -1229,7 +1259,7 @@
   <div id="panel-bcba-reports" class="panel">
     <div class="section">
       <div class="section-title">BCBA Directory</div>
-      <p class="section-hint">Opens the BCBA contacts label list, scrapes each BCBA, then loads connected clients for a full directory.</p>
+      <p class="section-hint">Scrapes BCBA contacts and connected clients (name + ID). Testing limit: first 3 BCBAs. Directory is saved locally and restored on reload.</p>
       <div class="buttons">
         <button id="bcba-directory-btn" type="button" class="concurance-scan-btn" style="width:100%">Directory</button>
       </div>

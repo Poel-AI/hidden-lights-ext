@@ -2,7 +2,7 @@
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-13rbt-storage';
+const PANEL_BUILD = '2026-07-13bcba-dir';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
@@ -8047,6 +8047,10 @@ _ensureSettingsLoaded().then(() => _populateSavedSearchDropdown());
 
 /* ---------- BCBA Directory ---------- */
 const BCBA_CONTACTS_LIST_HASH = '#contacts/?contactLabelIdIncluded=1015524';
+/** Testing limit: only scrape this many BCBAs per Directory run. */
+const BCBA_DIRECTORY_TEST_LIMIT = 3;
+const BCBA_DIRECTORY_PAUSE_MS = 1500;
+const BCBA_DIRECTORY_STORAGE_KEY = 'hidden_lights_bcba_directory';
 
 async function navigateHash(tabId, fullHash) {
   var h = fullHash.indexOf('#') === 0 ? fullHash : '#' + fullHash;
@@ -8086,12 +8090,91 @@ async function runNamedInjectAndPoll(tabId, scriptName, globalName, maxMs) {
   return pollForInjectResult(tabId, globalName, maxMs || 120000, 400);
 }
 
-function renderBcbaDirectory(directory, statusEl, resultEl) {
-  if (!directory || !directory.length) {
+function normalizeBcbaDirectoryPayload(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) {
+    return { savedAt: null, bcbas: payload };
+  }
+  if (payload.bcbas && Array.isArray(payload.bcbas)) {
+    return { savedAt: payload.savedAt || null, bcbas: payload.bcbas };
+  }
+  return null;
+}
+
+function collectBcbaClientIds(bcbas) {
+  var ids = [];
+  var seen = {};
+  for (var i = 0; i < (bcbas || []).length; i++) {
+    var clients = (bcbas[i] && bcbas[i].clients) || [];
+    for (var j = 0; j < clients.length; j++) {
+      var id = clients[j] && clients[j].id != null ? String(clients[j].id).trim() : '';
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function saveBcbaDirectoryToStorage(payload) {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    var obj = {};
+    obj[BCBA_DIRECTORY_STORAGE_KEY] = payload;
+    chrome.storage.local.set(obj);
+  } else {
+    try {
+      localStorage.setItem(BCBA_DIRECTORY_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+}
+
+function loadBcbaDirectoryFromStorage(done) {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(BCBA_DIRECTORY_STORAGE_KEY, function (o) {
+      var payload = normalizeBcbaDirectoryPayload(o && o[BCBA_DIRECTORY_STORAGE_KEY]);
+      done(payload);
+    });
+    return;
+  }
+  try {
+    var raw = localStorage.getItem(BCBA_DIRECTORY_STORAGE_KEY);
+    done(normalizeBcbaDirectoryPayload(raw ? JSON.parse(raw) : null));
+  } catch (e) {
+    done(null);
+  }
+}
+
+function renderBcbaDirectory(payload, statusEl, resultEl) {
+  var normalized = normalizeBcbaDirectoryPayload(payload);
+  var directory = normalized ? normalized.bcbas : [];
+  if (!directory.length) {
     resultEl.innerHTML = '<p>No BCBAs found.</p>';
     return;
   }
-  var html = '<p><strong>' + directory.length + '</strong> BCBA(s)</p>';
+  var allIds = collectBcbaClientIds(directory);
+  var html = '';
+  if (normalized.savedAt) {
+    html +=
+      '<p class="bcba-directory-saved">Saved ' +
+      escapeHtml(String(normalized.savedAt)) +
+      '</p>';
+  }
+  html +=
+    '<p><strong>' +
+    directory.length +
+    '</strong> BCBA(s) · <strong>' +
+    allIds.length +
+    '</strong> unique client ID(s)</p>';
+  if (allIds.length) {
+    html +=
+      '<div class="bcba-directory-ids">' +
+      '<div class="bcba-directory-ids-title">Client IDs</div>' +
+      '<p class="bcba-directory-ids-list">' +
+      escapeHtml(allIds.join(', ')) +
+      '</p></div>';
+  }
   for (var i = 0; i < directory.length; i++) {
     var bcba = directory[i];
     var clients = bcba.clients || [];
@@ -8115,11 +8198,15 @@ function renderBcbaDirectory(directory, statusEl, resultEl) {
         html +=
           '<li>' +
           escapeHtml(c.name || '') +
-          ' <span style="color:#64748b">(ID: ' +
+          ' <span class="bcba-client-id">ID: ' +
           escapeHtml(String(c.id || '')) +
-          (c.type ? ' · ' + escapeHtml(c.type) : '') +
-          (c.status ? ' · ' + escapeHtml(c.status) : '') +
-          ')</span></li>';
+          '</span>' +
+          (c.type || c.status
+            ? ' <span style="color:#64748b">(' +
+              escapeHtml([c.type, c.status].filter(Boolean).join(' · ')) +
+              ')</span>'
+            : '') +
+          '</li>';
       }
       html += '</ul>';
     }
@@ -8161,17 +8248,29 @@ async function runBcbaDirectory() {
     }
     var contacts = listRes.contacts || [];
     if (!contacts.length) throw new Error('No BCBAs found on the contacts list.');
+    var totalFound = contacts.length;
+    contacts = contacts.slice(0, BCBA_DIRECTORY_TEST_LIMIT);
 
     var directory = [];
     for (var i = 0; i < contacts.length; i++) {
       var bcba = contacts[i];
       statusEl.textContent =
-        'Connected clients ' + (i + 1) + '/' + contacts.length + ': ' + (bcba.name || bcba.id) + '…';
+        'Connected clients ' +
+        (i + 1) +
+        '/' +
+        contacts.length +
+        ' (of ' +
+        totalFound +
+        ' BCBAs; testing limit ' +
+        BCBA_DIRECTORY_TEST_LIMIT +
+        '): ' +
+        (bcba.name || bcba.id) +
+        '…';
       var detailHash =
         '#contacts/details/?id=' + encodeURIComponent(bcba.id) + '&mode=profile&edit=connected-clients';
       await navigateHash(tab.id, detailHash);
       await new Promise(function (r) {
-        setTimeout(r, 1800);
+        setTimeout(r, BCBA_DIRECTORY_PAUSE_MS);
       });
       var clientsRes = await runNamedInjectAndPoll(
         tab.id,
@@ -8195,9 +8294,30 @@ async function runBcbaDirectory() {
       }
     }
 
-    statusEl.textContent = 'Done — ' + directory.length + ' BCBA(s).';
-    renderBcbaDirectory(directory, statusEl, resultEl);
-    log('BCBA Directory: ' + directory.length + ' BCBAs scraped.');
+    var payload = {
+      savedAt: new Date().toISOString(),
+      bcbas: directory
+    };
+    saveBcbaDirectoryToStorage(payload);
+    var allIds = collectBcbaClientIds(directory);
+    statusEl.textContent =
+      'Done — ' +
+      directory.length +
+      ' BCBA(s) of ' +
+      totalFound +
+      ' (testing limit). ' +
+      allIds.length +
+      ' unique client ID(s) saved.';
+    renderBcbaDirectory(payload, statusEl, resultEl);
+    log(
+      'BCBA Directory: ' +
+        directory.length +
+        ' BCBAs scraped (limit ' +
+        BCBA_DIRECTORY_TEST_LIMIT +
+        '); ' +
+        allIds.length +
+        ' client IDs.'
+    );
   } catch (e) {
     var msg = (e && e.message) || String(e);
     statusEl.textContent = 'Error: ' + msg;
@@ -8210,9 +8330,21 @@ async function runBcbaDirectory() {
 
 (function initBcbaDirectory() {
   var btn = document.getElementById('bcba-directory-btn');
-  if (!btn) return;
+  var statusEl = document.getElementById('bcba-directory-status');
+  var resultEl = document.getElementById('bcba-directory-result');
+  if (!btn || !resultEl) return;
   btn.addEventListener('click', function () {
     runBcbaDirectory();
+  });
+  loadBcbaDirectoryFromStorage(function (payload) {
+    if (!payload || !payload.bcbas || !payload.bcbas.length) return;
+    if (statusEl) {
+      statusEl.textContent =
+        'Restored saved directory' +
+        (payload.savedAt ? ' (' + payload.savedAt + ')' : '') +
+        '.';
+    }
+    renderBcbaDirectory(payload, statusEl, resultEl);
   });
 })();
 
