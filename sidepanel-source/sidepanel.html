@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Hidden Lights</title>
+  <style>
+    body {
+      width: 100%;
+      min-width: 280px;
+      height: 100vh;
+      margin: 0;
+      padding: 12px 16px;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .main-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+    h2 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      color: #0369a1;
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #0ea5e9;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+    }
+    button:hover {
+      background: #0284c7;
+    }
+    /* Concurances scan buttons: grey by default, blue only when active list */
+    .concurance-scan-btn {
+      background: #94a3b8;
+    }
+    .concurance-scan-btn:hover {
+      background: #64748b;
+    }
+    .concurance-scan-btn.is-active {
+      background: #0ea5e9;
+    }
+    .concurance-scan-btn.is-active:hover {
+      background: #0284c7;
+    }
+    /* Console fixed at bottom, full width, always visible */
+    .console-bar {
+      flex-shrink: 0;
+      width: calc(100% + 32px);
+      margin-left: -16px;
+      margin-right: -16px;
+      margin-bottom: -12px;
+      height: clamp(170px, 34vh, 280px);
+      min-height: 150px;
+      max-height: min(560px, 72vh);
+      border-top: 1px solid #7dd3fc;
+      background: #f0f9ff;
+      display: flex;
+      flex-direction: column;
+      padding: 6px 16px 12px;
+      box-sizing: border-box;
+      resize: vertical;
+      overflow: hidden;
+    }
+    /* Scroll settings + log together so Save stays reachable when the panel is tall */
+    .console-bar-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .console-bar .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .console-bar .console-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #0369a1;
+    }
+    .settings-btn {
+      background: none;
+      border: none;
+      padding: 0 2px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #0369a1;
+      opacity: 0.7;
+      line-height: 1;
+    }
+    .settings-btn:hover { opacity: 1; background: none; }
+    .settings-panel {
+      display: none;
+      margin-bottom: 6px;
+      padding: 8px 10px;
+      background: #fff;
+      border: 1px solid #bae6fd;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel label {
+      display: block;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 3px;
+      font-size: 11px;
+    }
+    .settings-panel input[type="text"],
+    .settings-panel input[type="password"],
+    .settings-panel textarea {
+      width: 100%;
+      padding: 5px 7px;
+      font-size: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      box-sizing: border-box;
+      margin-bottom: 6px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 52px;
+    }
+    .settings-panel textarea {
+      line-height: 1.35;
+    }
+    .settings-section {
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e0f2fe;
+    }
+    .settings-section:last-of-type {
+      border-bottom: none;
+      margin-bottom: 8px;
+      padding-bottom: 0;
+    }
+    .settings-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #0369a1;
+      margin: 0 0 6px 0;
+    }
+    .settings-help {
+      font-size: 11px;
+      color: #64748b;
+      margin: 0 0 8px 0;
+      line-height: 1.4;
+    }
+    .settings-panel .settings-save {
+      padding: 4px 14px;
+      font-size: 12px;
+      background: #0ea5e9;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .settings-panel .settings-save:hover { background: #0284c7; }
+    .settings-panel .settings-saved-msg {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 11px;
+      color: #16a34a;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .settings-panel .settings-saved-msg.show { opacity: 1; }
+    #log {
+      flex: 1;
+      min-height: 0;
+      padding: 6px 8px;
+      background: #fff;
+      border: 1px solid #bae6fd;
+      border-radius: 4px;
+      font-size: 11px;
+      overflow-y: auto;
+    }
+    #log:empty {
+      background: #f0f9ff;
+    }
+    #log p {
+      margin: 3px 0;
+    }
+    .section {
+      margin-bottom: 14px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #0369a1;
+      margin: 0 0 6px 0;
+    }
+    .buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .section .buttons {
+      margin-bottom: 0;
+    }
+    #overlaps-result {
+      margin-top: 12px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    #overlaps-result:empty {
+      display: none;
+    }
+    #overlaps-result h3 {
+      margin: 0 0 8px 0;
+      font-size: 13px;
+      color: #0369a1;
+    }
+    #overlaps-result .group {
+      margin-bottom: 12px;
+      padding: 8px;
+      background: #fff;
+      border: 1px solid #eee;
+      border-radius: 4px;
+    }
+    #overlaps-result .entry {
+      margin: 4px 0;
+      padding: 4px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 11px;
+    }
+    #overlaps-result .entry:last-child {
+      border-bottom: none;
+    }
+    .section-hint--billing-walk {
+      margin-top: 10px;
+    }
+    .section-hint {
+      font-size: 11px;
+      color: #475569;
+      margin: 0 0 8px 0;
+    }
+    #overlap-fix-buttons .overlap-btn {
+      margin-bottom: 6px;
+    }
+    /* Overlap list: simple list of one-liners with Fix button */
+    .overlap-fix-list {
+      margin-top: 10px;
+    }
+    .overlap-fix-list:empty {
+      display: none;
+    }
+    .overlap-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      border: 1px solid #0ea5e9;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .overlap-list__item {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #334155;
+      border-bottom: 1px solid #cbd5e1;
+    }
+    .overlap-list__item:last-child {
+      border-bottom: none;
+    }
+    .overlap-list--blocked {
+      border-color: #f59e0b;
+      margin-bottom: 12px;
+    }
+    .overlap-list__item--blocked {
+      background: #fffbeb;
+    }
+    .overlap-blocked-multi__title {
+      margin: 0 0 4px 0;
+      font-size: 13px;
+      color: #b45309;
+    }
+    .overlap-blocked-multi {
+      margin-bottom: 14px;
+    }
+    .overlap-list__item--multi {
+      background: #fffbeb;
+    }
+    .overlap-list__type--multi {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      font-size: 11px;
+      line-height: 1;
+      color: #b45309;
+      font-weight: 600;
+    }
+    .overlap-list__line--multi-label {
+      color: #b45309;
+      font-weight: 600;
+    }
+    .overlap-list__row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+    .overlap-list__type {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      font-size: 10px;
+      line-height: 1;
+      color: #94a3b8;
+      font-weight: 400;
+    }
+    .overlap-list__fix-wrap {
+      flex-shrink: 0;
+    }
+    .overlap-list__lines {
+      flex: 1;
+      min-width: 0;
+    }
+    .overlap-list__line {
+      line-height: 1.35;
+      margin-bottom: 2px;
+    }
+    .overlap-list__line:first-child {
+      color: #0369a1;
+      font-weight: 600;
+    }
+    .overlap-list__line:last-child {
+      margin-bottom: 0;
+    }
+    .overlap-list__line--error {
+      color: #b91c1c;
+    }
+    .overlap-list__fail-reason {
+      display: block;
+      color: #b91c1c;
+      font-size: 11px;
+      margin-top: 4px;
+      padding-left: 42px;
+      min-height: 0;
+      font-weight: 400;
+    }
+    .overlap-list__fail-reason:empty {
+      display: none;
+    }
+    .overlap-list__fail-reason--progress {
+      color: #64748b;
+    }
+    .overlap-list__fix {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      font-size: 0;
+      line-height: 1;
+      color: #fff;
+      background: #0ea5e9;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .overlap-list__fix::before {
+      content: "\2692";
+      font-size: 14px;
+      display: block;
+    }
+    .overlap-list__fix:hover:not(:disabled) {
+      background: #0284c7;
+    }
+    .overlap-list__fix:disabled:not(.is-loading) {
+      background: #94a3b8;
+      cursor: not-allowed;
+      opacity: 0.8;
+    }
+    /* Loading: spinner, yellow */
+    .overlap-list__fix.is-loading::before {
+      content: "";
+      display: block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(0,0,0,0.15);
+      border-top-color: #1e293b;
+      border-radius: 50%;
+      animation: overlap-spin 0.65s linear infinite;
+    }
+    .overlap-list__fix.is-loading {
+      background: #eab308;
+      cursor: wait;
+    }
+    @keyframes overlap-spin {
+      to { transform: rotate(360deg); }
+    }
+    /* Success: checkmark, green */
+    .overlap-list__fix.is-success::before {
+      content: "\2713";
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .overlap-list__fix.is-success {
+      background: #16a34a;
+      cursor: default;
+    }
+    .overlap-list__fix.is-success:disabled {
+      background: #16a34a;
+      opacity: 1;
+    }
+    /* Error: red X; click to retry */
+    .overlap-list__fix.is-error::before {
+      content: "\2715";
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .overlap-list__fix.is-error {
+      background: #dc2626;
+      color: #fff;
+      cursor: pointer;
+    }
+    .overlap-list__fix.is-error:hover {
+      background: #b91c1c;
+      color: #fff;
+    }
+    .overlap-list__fix.is-error:disabled {
+      background: #dc2626;
+      color: #fff;
+      opacity: 1;
+    }
+    #overlap-fix-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f8ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .overlap-fix-result--fail {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 4px;
+      padding: 10px;
+      color: #991b1b;
+    }
+    .overlap-fix-result--fail-detail {
+      margin: 8px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #overlap-fix-result:empty {
+      display: none;
+    }
+    .overlap-run-all-toolbar {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .overlap-run-all-toolbar:empty {
+      display: none;
+    }
+    #overlap-run-all-btn {
+      background: #0ea5e9;
+      font-weight: 600;
+    }
+    #overlap-run-all-btn:hover:not(:disabled) {
+      background: #0284c7;
+    }
+    #overlap-run-all-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+    #timesheet-result {
+      margin-top: 12px;
+      padding: 8px;
+      background: #f0f8ff;
+      border-radius: 4px;
+      font-size: 12px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    #timesheet-result:empty {
+      display: none;
+    }
+    #timesheet-result h3 {
+      margin: 0 0 8px 0;
+      font-size: 13px;
+    }
+    #timesheet-result .field {
+      margin: 4px 0;
+      padding: 4px 0;
+      border-bottom: 1px solid #e0e8f0;
+    }
+    #timesheet-result .field:last-child {
+      border-bottom: none;
+    }
+    #timesheet-result .field-name {
+      font-weight: 600;
+      color: #0369a1;
+    }
+    #add-service-line-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #add-service-line-result:empty {
+      display: none;
+    }
+    #set-date-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #set-date-result:empty {
+      display: none;
+    }
+    #enter-times-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #enter-times-result:empty {
+      display: none;
+    }
+    #set-timesheet-timezone-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #set-timesheet-timezone-result:empty {
+      display: none;
+    }
+    #select-place-of-service-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #select-place-of-service-result:empty {
+      display: none;
+    }
+    #select-service-address-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #select-service-address-result:empty {
+      display: none;
+    }
+    #select-nonbillable-code-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #select-nonbillable-code-result:empty {
+      display: none;
+    }
+    #click-billable-97153-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #click-billable-97153-result:empty {
+      display: none;
+    }
+    #select-payor-option-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #select-payor-option-result:empty {
+      display: none;
+    }
+    #click-existing-note-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #click-existing-note-result:empty {
+      display: none;
+    }
+    #click-note-by-date-name-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #click-note-by-date-name-result:empty {
+      display: none;
+    }
+    #selected-backup-notes-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #selected-backup-notes-result:empty {
+      display: none;
+    }
+    #click-close-note-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #click-close-note-result:empty {
+      display: none;
+    }
+    #click-provider-name-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #click-provider-name-result:empty {
+      display: none;
+    }
+    #read-contact-labels-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #read-contact-labels-result:empty {
+      display: none;
+    }
+    #close-contact-card-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #close-contact-card-result:empty {
+      display: none;
+    }
+    #provider-combo-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #provider-combo-result:empty {
+      display: none;
+    }
+    #open-sig-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #open-sig-result:empty {
+      display: none;
+    }
+    /* Tab bar: Auto | Manual, full width, 50/50 */
+    .tab-bar {
+      display: flex;
+      width: 100%;
+      margin-bottom: 12px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid #0ea5e9;
+      position: relative;
+      z-index: 10;
+    }
+    .tab-bar .tab {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: #e0f2fe;
+      color: #0369a1;
+      position: relative;
+      pointer-events: auto;
+    }
+    .tab-bar .tab:hover {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .tab-bar .tab.active {
+      background: #0ea5e9;
+      color: #fff;
+    }
+    .tab-bar .tab:not(:last-child) {
+      border-right: 1px solid #7dd3fc;
+    }
+    .panel {
+      display: none;
+    }
+    .panel.active {
+      display: block;
+    }
+    .edit-timesheet-ready-status {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .edit-timesheet-ready-status--idle {
+      background: #e2e8f0;
+      color: #475569;
+    }
+    .edit-timesheet-ready-status--ready {
+      background: #22c55e;
+      color: #fff;
+    }
+    .edit-timesheet-ready-status--not-ready {
+      background: #ef4444;
+      color: #fff;
+    }
+    .edit-timesheet-ready-status--loading {
+      background: #d97706;
+      color: #fff;
+    }
+    #check-edit-timesheet-ready.is-monitoring {
+      background: #b45309;
+    }
+    #check-edit-timesheet-ready.is-monitoring:hover {
+      background: #92400e;
+    }
+    #walk-billing-pages-result,
+    #billing-500-mode-result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+    #walk-billing-pages-result:empty,
+    #billing-500-mode-result:empty {
+      display: none;
+    }
+    /* AI Search */
+    .ai-search-input {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: system-ui, sans-serif;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-sizing: border-box;
+      resize: vertical;
+      min-height: 56px;
+    }
+    .ai-search-input:focus {
+      outline: none;
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 2px rgba(14,165,233,0.15);
+    }
+    #ai-search-result {
+      margin-top: 12px;
+      padding: 8px;
+      background: #f0f9ff;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #ai-search-result:empty {
+      display: none;
+    }
+    #ai-search-result h3 {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      color: #0369a1;
+    }
+    #ai-search-result .ai-summary {
+      margin: 0 0 4px 0;
+      font-size: 11px;
+      color: #475569;
+    }
+    #ai-search-list:empty {
+      display: none;
+    }
+    #ai-search-list {
+      margin-top: 8px;
+    }
+    .ai-result-item {
+      display: flex;
+      flex-direction: column;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: #334155;
+      border-bottom: 1px solid #cbd5e1;
+    }
+    .ai-result-item:last-child {
+      border-bottom: none;
+    }
+    .ai-result-item__line {
+      line-height: 1.35;
+      margin-bottom: 2px;
+    }
+    .ai-result-item__line:first-child {
+      color: #0369a1;
+      font-weight: 600;
+    }
+    .ai-result-item__line:last-child {
+      margin-bottom: 0;
+    }
+    .ai-result-item__line b {
+      color: #64748b;
+      font-weight: 600;
+    }
+    .ai-result-pair {
+      padding: 0 !important;
+    }
+    .ai-pair-row {
+      padding: 8px 12px;
+    }
+    .ai-pair-vs {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 2px 0;
+      background: #f1f5f9;
+      border-top: 1px solid #e2e8f0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .settings-panel label + label {
+      margin-top: 8px;
+    }
+    /* 97155 scan — unknown payor classification */
+    .unknown-payors-prompt {
+      padding: 10px 12px;
+      background: #fffbeb;
+      border: 1px solid #fbbf24;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+    .unknown-payors-prompt__title {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      color: #92400e;
+    }
+    .unknown-payors-prompt__row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 8px 0;
+      border-top: 1px solid #fde68a;
+    }
+    .unknown-payors-prompt__row:first-of-type {
+      border-top: none;
+      padding-top: 4px;
+    }
+    .unknown-payors-prompt__label {
+      flex: 1;
+      min-width: 140px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #78350f;
+      word-break: break-word;
+    }
+    .unknown-payors-prompt__btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      color: #fff;
+    }
+    .unknown-payors-prompt__btn--allow {
+      background: #059669;
+    }
+    .unknown-payors-prompt__btn--allow:hover {
+      background: #047857;
+    }
+    .unknown-payors-prompt__btn--block {
+      background: #b45309;
+    }
+    .unknown-payors-prompt__btn--block:hover {
+      background: #92400e;
+    }
+    .ai-saved-row {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 6px;
+      position: relative;
+    }
+    .ai-saved-trigger {
+      flex: 1;
+      min-width: 0;
+      padding: 6px 24px 6px 8px;
+      font-size: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E") no-repeat right 8px center;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.4;
+      color: #334155;
+    }
+    .ai-saved-trigger:hover {
+      border-color: #94a3b8;
+    }
+    .ai-saved-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 28px;
+      z-index: 100;
+      max-height: 240px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
+      margin-top: 2px;
+    }
+    .ai-saved-dropdown.open {
+      display: block;
+    }
+    .ai-saved-dropdown-item {
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.5;
+      cursor: pointer;
+      white-space: normal;
+      word-wrap: break-word;
+      border-bottom: 1px solid #f1f5f9;
+      color: #334155;
+    }
+    .ai-saved-dropdown-item:last-child {
+      border-bottom: none;
+    }
+    .ai-saved-dropdown-item:hover {
+      background: #f0f9ff;
+    }
+    .ai-saved-dropdown-item.selected {
+      background: #e0f2fe;
+      font-weight: 600;
+    }
+    .ai-saved-dropdown-empty {
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #94a3b8;
+      font-style: italic;
+    }
+    .ai-saved-delete {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      font-size: 16px;
+      line-height: 1;
+      background: none;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      color: #94a3b8;
+      cursor: pointer;
+    }
+    .ai-saved-delete:hover {
+      color: #dc2626;
+      border-color: #dc2626;
+      background: none;
+    }
+    .ai-save-btn {
+      background: #16a34a;
+      font-size: 13px;
+      padding: 8px 14px;
+    }
+    .ai-save-btn:hover {
+      background: #15803d;
+    }
+    .ai-highlight-btn {
+      font-size: 13px;
+      padding: 8px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      background: #f1f5f9;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .ai-highlight-btn:hover {
+      background: #e2e8f0;
+    }
+    .ai-highlight-btn.active {
+      background: #fef08a;
+      border-color: #eab308;
+      color: #854d0e;
+    }
+    .ai-highlight-btn.active:hover {
+      background: #fde047;
+    }
+    .ai-filter-btn {
+      background: #0ea5e9;
+      color: #fff;
+      font-size: 13px;
+      padding: 8px 14px;
+    }
+    .ai-filter-btn:hover {
+      background: #0284c7;
+    }
+    .ai-clear-highlight-btn {
+      background: #94a3b8;
+      font-size: 13px;
+      padding: 8px 14px;
+    }
+    .ai-clear-highlight-btn:hover {
+      background: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-scroll">
+  <h2>Hidden Lights</h2>
+
+  <div class="tab-bar">
+    <button type="button" class="tab" data-panel="bcba-reports" aria-pressed="false">BCBA reports</button>
+    <button type="button" class="tab" data-panel="rbt-reports" aria-pressed="false">RBT reports</button>
+    <button type="button" class="tab active" data-panel="auto" aria-pressed="true">Concurrences</button>
+    <button type="button" class="tab" data-panel="manual" aria-pressed="false" hidden>Manual</button>
+  </div>
+
+  <div id="panel-bcba-reports" class="panel">
+    <div class="section">
+      <div class="section-title">BCBA reports</div>
+      <p class="section-hint">Coming soon.</p>
+    </div>
+  </div>
+
+  <div id="panel-rbt-reports" class="panel">
+    <div class="section">
+      <div class="section-title">RBT reports</div>
+      <p class="section-hint">Coming soon.</p>
+    </div>
+  </div>
+
+  <div id="panel-auto" class="panel active">
+    <div class="section" id="overlap-fix-section">
+      <div class="buttons">
+        <button id="texas-overlaps-scan" type="button" class="concurance-scan-btn" style="width:100%">Scan</button>
+      </div>
+      <div id="overlap-run-all-wrap"></div>
+      <div id="overlap-fix-buttons" class="overlap-fix-list"></div>
+      <div id="overlaps-result"></div>
+      <div id="overlap-fix-result"></div>
+    </div>
+  </div>
+
+  <div id="panel-manual" class="panel">
+  <div class="section">
+    <div class="section-title">Signatures</div>
+    <div class="buttons">
+      <button id="sig">Sig</button>
+      <button id="open-client-sig">Open client sig</button>
+      <button id="open-provider-sig">Open provider sig</button>
+      <button id="fill-no-signature">No signature + agree</button>
+      <button id="click-sign-confirm">Confirm sign</button>
+      <button id="click-continue-dismiss">Dismiss dialog</button>
+      <button id="auto-sign-both" style="background:#1565c0;color:#fff;font-weight:700;">Auto sign both</button>
+    </div>
+    <div id="open-sig-result"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Basics</div>
+    <div class="buttons">
+      <button id="texas-overlaps-manual" type="button" class="concurance-scan-btn">Scan</button>
+      <button id="edit-timesheet">Edit Timesheet</button>
+      <button type="button" id="check-edit-timesheet-ready">Watch grid load</button>
+    </div>
+    <div id="edit-timesheet-ready-status" class="edit-timesheet-ready-status edit-timesheet-ready-status--idle" aria-live="polite">—</div>
+    <p class="section-hint section-hint--billing-walk"><strong>Walk all billing pages</strong> always runs 500 mode first (hash <code>pageSize=500</code>, no <code>page=</code>), clicks <strong>Apply</strong>, waits until the grid has finished loading, then uses <strong>Next</strong> only with a <strong>3s</strong> gap after each page. Stops when there is no Next, 0 rows, or load timeout.</p>
+    <div class="buttons">
+      <button type="button" id="billing-500-mode">500 mode (hash + Apply)</button>
+      <button type="button" id="walk-billing-pages">Walk all billing pages</button>
+    </div>
+    <p class="section-hint section-hint--billing-walk">500 mode: sets <code>pageSize=500</code>, removes <code>page=</code> in the hash, then clicks <strong>Apply</strong> when the MUI button shows (same setup as the start of a walk).</p>
+    <div id="billing-500-mode-result" aria-live="polite"></div>
+    <div id="walk-billing-pages-result" aria-live="polite"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Time sheet shared</div>
+    <div class="buttons">
+      <button id="read-timesheet">Read Time Sheet</button>
+      <button id="add-service-line">Add Service Line</button>
+      <button id="set-date-today">Set Date (1 month ago)</button>
+      <button id="enter-times">Enter times</button>
+      <button id="set-timesheet-timezone" type="button">Set time zone</button>
+    </div>
+    <div id="set-timesheet-timezone-result" aria-live="polite"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Non billable specif</div>
+    <div class="buttons">
+      <button id="select-nonbillable-code">Select nonbillable code</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Billable new</div>
+    <div class="buttons">
+      <button id="click-billable-97153">97153</button>
+      <button id="select-payor-option">Master</button>
+      <button id="select-place-of-service">Place of service</button>
+      <button id="select-service-address">Service address</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Note</div>
+    <div class="buttons">
+      <button id="click-existing-note">Click existing note</button>
+      <button id="click-note-by-date-name">Click note (03/17 Molly)</button>
+      <button type="button" id="selected-backup-notes">Selected backup notes</button>
+      <button id="click-close-note">Close note</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Provider</div>
+    <p class="section-hint">On the billing list: click the provider name on the first row (opens the contact card). With the contact card open, read its labels.</p>
+    <div class="buttons">
+      <button id="click-provider-name">Click provider name</button>
+      <button id="read-contact-labels">Read labels</button>
+      <button id="close-contact-card">Close contact card</button>
+      <button id="provider-combo">Combo: open → read labels → close</button>
+    </div>
+    <div id="click-provider-name-result"></div>
+    <div id="read-contact-labels-result"></div>
+    <div id="close-contact-card-result"></div>
+    <div id="provider-combo-result"></div>
+  </div>
+
+  <div id="add-service-line-result"></div>
+  <div id="set-date-result"></div>
+  <div id="enter-times-result"></div>
+  <div id="select-place-of-service-result"></div>
+  <div id="select-service-address-result"></div>
+  <div id="select-nonbillable-code-result"></div>
+  <div id="click-billable-97153-result"></div>
+  <div id="select-payor-option-result"></div>
+  <div id="click-existing-note-result"></div>
+  <div id="click-note-by-date-name-result"></div>
+  <div id="selected-backup-notes-result"></div>
+  <div id="click-close-note-result"></div>
+  <div id="timesheet-result"></div>
+  </div><!-- /#panel-manual -->
+
+  <div id="panel-ai-search" class="panel">
+    <div class="section">
+      <div class="section-title">AI-Powered Search</div>
+      <p class="section-hint">Describe what you want to find in the billing table in plain English. The AI will read the current page and find matching rows.</p>
+      <div class="ai-saved-row">
+        <div id="ai-saved-trigger" class="ai-saved-trigger">-- saved searches --</div>
+        <div id="ai-saved-dropdown" class="ai-saved-dropdown"></div>
+        <button type="button" id="ai-saved-delete" class="ai-saved-delete" title="Delete selected saved search">&times;</button>
+      </div>
+      <textarea id="ai-search-input" class="ai-search-input" rows="3" placeholder="e.g. Find all codes 97155 that are at the same time as 97153&#10;e.g. Payor is United and code 97153"></textarea>
+      <div class="buttons" style="margin-top:8px;">
+        <button type="button" id="ai-search-btn">Search</button>
+        <button type="button" id="ai-save-search-btn" class="ai-save-btn" style="display:none;">Save search</button>
+        <button type="button" id="ai-highlight-toggle" class="ai-highlight-btn active" style="display:none;">Highlight</button>
+        <button type="button" id="ai-filter-btn" class="ai-filter-btn" style="display:none;">Filter page</button>
+        <button type="button" id="ai-reset-page-btn" class="ai-clear-highlight-btn" style="display:none;">Reset page</button>
+      </div>
+      <div id="ai-search-result"></div>
+      <div id="ai-search-list"></div>
+    </div>
+  </div><!-- /#panel-ai-search -->
+
+  </div><!-- /.main-scroll -->
+
+  <div class="console-bar">
+    <div class="console-header">
+      <span class="console-label">Console</span>
+      <button type="button" class="settings-btn" id="toggle-settings" title="Settings">&#9881;</button>
+    </div>
+    <div class="console-bar-scroll">
+      <div class="settings-panel" id="settings-panel">
+        <div class="settings-section">
+          <div class="settings-section-title">97155 concurrents scan — payors</div>
+          <p class="settings-help">
+            Substrings match the Payor column (case-insensitive). Put <strong>one entry per line</strong> (commas also work).
+            Block list is applied first. Then allow list — use <code>*</code> alone to allow every payor that is not blocked.
+            Rows that match neither list are held until you choose allow or block. Use <code>(empty payor)</code> as a literal
+            entry to match blank payor cells.
+          </p>
+          <label for="settings-payors-allow">Allow list (whitelist)</label>
+          <textarea id="settings-payors-allow" rows="4" placeholder="United Healthcare Community Plan&#10;Aetna&#10;or *"></textarea>
+          <label for="settings-payors-block">Block list (blacklist)</label>
+          <textarea id="settings-payors-block" rows="4" placeholder="Medicare&#10;Medicaid"></textarea>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">AI Search</div>
+          <label for="settings-anthropic-key">Anthropic API key <span style="font-weight:400;color:#64748b;">(optional)</span></label>
+          <input type="password" id="settings-anthropic-key" placeholder="sk-ant-...">
+        </div>
+        <div>
+          <button type="button" class="settings-save" id="settings-save">Save</button>
+          <span class="settings-saved-msg" id="settings-saved-msg">Saved</span>
+        </div>
+      </div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "appName": "Hidden Lights",
+  "version": "1.0.0",
+  "clientId": "hidden-lights-biller",
+  "sidepanelApp": "app",
+  "poelShell": {
+    "runScriptReturnGlobal": {
+      "inject-select-payor-option": "__selectPayorOptionResult",
+      "inject-select-visit-location-cards": "__selectVisitLocationResult",
+      "inject-select-fee-schedule-role": "__selectFeeScheduleRoleResult"
+    },
+    "overlapScanByKey": {
+      "default": { "script": "inject-overlaps", "returnGlobal": "__overlapsResult" },
+      "97155": { "script": "inject-overlaps-97155", "returnGlobal": "__overlaps97155Result" }
+    }
+  },
+  "scripts": {
+    "app": { "version": "1" },
+    "inject-draw": { "version": "1" },
+    "inject-overlaps": { "version": "3" },
+    "inject-overlaps-97155": { "version": "7" },
+    "inject-read-timesheet": { "version": "4" },
+    "inject-service-line-tab-count": { "version": "1" },
+    "inject-add-service-line": { "version": "2" },
+    "inject-set-date-of-service": { "version": "1" },
+    "inject-enter-times": { "version": "4" },
+    "inject-set-timesheet-timezone": { "version": "2" },
+    "inject-read-time-worked": { "version": "2" },
+    "inject-click-service-line-tab": { "version": "2" },
+    "inject-select-service-codes": { "version": "2" },
+    "inject-click-billable-97153": { "version": "2" },
+    "inject-click-nonbillable-97153": { "version": "1" },
+    "inject-click-billable-97153-no-nonbillable": { "version": "1" },
+    "inject-select-payor-option": { "version": "8" },
+    "inject-select-fee-schedule-role": { "version": "1" },
+    "inject-select-visit-location-cards": { "version": "1" },
+    "inject-select-place-of-service": { "version": "2" },
+    "inject-select-service-address": { "version": "2" },
+    "inject-click-existing-note": { "version": "1" },
+    "inject-click-note-by-date-name": { "version": "1" },
+    "inject-select-existing-session-note-flow": { "version": "10" },
+    "inject-nudge-open-session-note-combo": { "version": "1" },
+    "inject-clear-session-note-combo": { "version": "1" },
+    "inject-click-close-note": { "version": "1" },
+    "inject-click-provider-name": { "version": "1" },
+    "inject-read-contact-labels": { "version": "1" },
+    "inject-close-contact-card": { "version": "1" },
+    "inject-provider-combo": { "version": "1" },
+    "inject-provider-combo-for-entry": { "version": "2" },
+    "inject-read-time-to": { "version": "1" },
+    "inject-click-cancel": { "version": "1" },
+    "inject-click-signature-button": { "version": "1" },
+    "inject-fill-no-signature": { "version": "1" },
+    "inject-click-sign-button": { "version": "1" },
+    "inject-click-continue-button": { "version": "1" }
+  },
+  "ui": {
+    "title": "Hidden Lights",
+    "panels": [
+      {
+        "id": "auto",
+        "label": "Concurrences",
+        "sections": [
+          {
+            "title": "Texas overlaps",
+            "buttons": [
+              { "id": "texas-overlaps-scan", "label": "Texas overlaps", "script": "inject-overlaps-97155" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "manual",
+        "label": "Manual",
+        "sections": [
+          {
+            "title": "Basics",
+            "buttons": [
+              { "id": "sig", "label": "Sig", "script": "inject-draw" },
+              { "id": "texas-overlaps-manual", "label": "Texas overlaps", "script": "inject-overlaps-97155" },
+              { "id": "edit-timesheet", "label": "Edit Timesheet", "action": "editTimesheet" }
+            ]
+          },
+          {
+            "title": "Time sheet shared",
+            "buttons": [
+              { "id": "read-timesheet", "label": "Read Time Sheet", "script": "inject-read-timesheet" },
+              { "id": "add-service-line", "label": "Add Service Line", "script": "inject-add-service-line" },
+              { "id": "set-date-today", "label": "Set Date (Today)", "script": "inject-set-date-of-service" },
+              { "id": "enter-times", "label": "Enter times", "script": "inject-enter-times" },
+              { "id": "set-timesheet-timezone", "label": "Set time zone", "script": "inject-set-timesheet-timezone" }
+            ]
+          },
+          {
+            "title": "Non billable specif",
+            "buttons": [
+              { "id": "select-nonbillable-code", "label": "Select nonbillable code", "script": "inject-select-service-codes" }
+            ]
+          },
+          {
+            "title": "Billable new",
+            "buttons": [
+              { "id": "click-billable-97153", "label": "97153", "script": "inject-click-billable-97153" },
+              { "id": "select-payor-option", "label": "Master", "script": "inject-select-payor-option" },
+              { "id": "select-place-of-service", "label": "Place of service", "script": "inject-select-place-of-service" },
+              { "id": "select-service-address", "label": "Service address", "script": "inject-select-service-address" }
+            ]
+          },
+          {
+            "title": "Note",
+            "buttons": [
+              { "id": "click-existing-note", "label": "Click existing note", "script": "inject-click-existing-note" },
+              { "id": "click-note-by-date-name", "label": "Click note (03/17 Molly)", "script": "inject-click-note-by-date-name" },
+              { "id": "selected-backup-notes", "label": "Selected backup notes", "script": "inject-select-existing-session-note-flow" },
+              { "id": "click-close-note", "label": "Close note", "script": "inject-click-close-note" }
+            ]
+          },
+          {
+            "title": "Provider",
+            "buttons": [
+              { "id": "click-provider-name", "label": "Click provider name", "script": "inject-click-provider-name" },
+              { "id": "read-contact-labels", "label": "Read labels", "script": "inject-read-contact-labels" },
+              { "id": "close-contact-card", "label": "Close contact card", "script": "inject-close-contact-card" },
+              { "id": "provider-combo", "label": "Combo: open → read labels → close", "script": "inject-provider-combo" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
