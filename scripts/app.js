@@ -2032,7 +2032,7 @@ var CENTRALREACH_SELECTORS = {
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-13rbt-folder-tab';
+const PANEL_BUILD = '2026-07-13rbt-fs-auto';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
@@ -12985,7 +12985,14 @@ async function runPdfExport(tab, options = {}) {
 
 function doChooseFolder() {
   return (async () => {
-    setFolderStatus('Opening folder picker…', false);
+    // In POEL, the shell immediately opens fs-chooser.html (out of sandbox).
+    // Status here is secondary to that shell overlay / tab UI.
+    setFolderStatus(
+      hasShellFs()
+        ? 'Shell is opening the folder picker tab — choose the folder there…'
+        : 'Opening folder picker…',
+      false
+    );
     try {
       if (hasShellFs()) {
         const res = await shellFsChooseDirectory();
@@ -12997,14 +13004,15 @@ function doChooseFolder() {
         clearSaveDirCache();
         updateChosenFolderUIFull();
         setStatus('Clients folder chosen: ' + (res.name || 'folder') + '. Saved for next time.');
+        setFolderStatus('Clients folder: ' + (res.name || 'Chosen folder'), false);
         return;
       }
       if (!('showDirectoryPicker' in self) || typeof showDirectoryPicker !== 'function') {
         setStatus(
-          'Shell folder bridge missing. Reload unpacked POEL CLIENTS at chrome://extensions (needs sandbox SHELL.fsChooseDirectory), then click Update in the panel.',
+          'Shell folder bridge missing. Reload unpacked POEL CLIENTS at chrome://extensions (v1.0.13+ with fs-chooser.html / SHELL.fsChooseDirectory), then click Update in the panel.',
           true
         );
-        setFolderStatus('Reload POEL CLIENTS shell, then Update app.', true);
+        setFolderStatus('Reload POEL CLIENTS shell (v1.0.13+), then Update app.', true);
         return;
       }
       const handle = await showDirectoryPicker({ mode: 'readwrite' });
@@ -13020,14 +13028,16 @@ function doChooseFolder() {
       }
       const msg = (e && e.message) || 'Unknown error';
       console.error('[RBT reports] choose folder failed:', e);
-      const looksLikeMissingFsApi =
-        /File System Access API is unavailable|showDirectoryPicker|not supported in this browser/i.test(msg);
-      if (looksLikeMissingFsApi) {
+      const looksLikeBraveOrMissingApi =
+        /File System Access API is unavailable|showDirectoryPicker|not supported in this browser|Use Google Chrome/i.test(
+          msg
+        );
+      if (looksLikeBraveOrMissingApi) {
         setStatus(
-          'Folder picker failed in the shell. Reload unpacked POEL CLIENTS at chrome://extensions (v1.0.12+ with fs-chooser.html), then Update the app — not a generic “browser unsupported” issue.',
+          'Folder picker unavailable. Use Google Chrome (not Brave), reload unpacked POEL CLIENTS at chrome://extensions (v1.0.13+ with fs-chooser.html), then Update the app.',
           true
         );
-        setFolderStatus('Reload POEL CLIENTS shell (folder picker tab).', true);
+        setFolderStatus('Use Chrome + reload POEL CLIENTS (folder picker tab).', true);
         return;
       }
       setStatus('Could not open folder: ' + msg, true);
