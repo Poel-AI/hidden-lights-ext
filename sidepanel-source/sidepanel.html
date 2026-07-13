@@ -1061,31 +1061,157 @@
     .ai-clear-highlight-btn:hover {
       background: #64748b;
     }
+    .panel-build {
+      font-size: 11px;
+      font-weight: 500;
+      color: #64748b;
+      margin-left: 6px;
+    }
+    .rbt-folder-box {
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      background: #fff;
+      border: 1px solid #d2d2d7;
+      border-radius: 8px;
+    }
+    .rbt-folder-box .rbt-label {
+      font-size: 10px;
+      color: #6e6e73;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .rbt-btn {
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border: 1px solid #d2d2d7;
+      border-radius: 6px;
+      background: #fff;
+      color: #1d1d1f;
+      cursor: pointer;
+      font-size: 14px;
+      text-align: left;
+    }
+    .rbt-btn:hover { background: #e8e8ed; }
+    .rbt-queue-box {
+      border: 1px solid #d2d2d7;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .rbt-queue-box .queue-header {
+      font-size: 10px;
+      color: #6e6e73;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .rbt-queue-list {
+      max-height: 120px;
+      overflow-y: auto;
+      min-height: 40px;
+    }
+    .queue-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      background: #f5f5f7;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #1d1d1f;
+    }
+    .queue-item:last-child { margin-bottom: 0; }
+    .queue-item .queue-remove {
+      cursor: pointer;
+      color: #c93434;
+      font-size: 14px;
+      padding: 0 4px;
+    }
+    .queue-empty-msg {
+      font-size: 11px;
+      color: #86868b;
+      padding: 8px 0;
+    }
+    .rbt-status {
+      font-size: 12px;
+      color: #6e6e73;
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid #d2d2d7;
+    }
+    .rbt-save-log {
+      font-size: 10px;
+      color: #2d6a2d;
+      margin-top: 8px;
+      max-height: 100px;
+      overflow-y: auto;
+      background: #f0f7f0;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid #d2e8d2;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .rbt-form-row { margin-bottom: 8px; }
+    .rbt-form-row label {
+      display: block;
+      font-size: 11px;
+      color: #6e6e73;
+      margin-bottom: 3px;
+    }
+    .rbt-form-row input,
+    .rbt-form-row select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d2d2d7;
+      border-radius: 4px;
+      background: #fff;
+      color: #1d1d1f;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    .bcba-directory-result {
+      margin-top: 10px;
+      font-size: 12px;
+      max-height: 360px;
+      overflow: auto;
+    }
+    .bcba-directory-result details {
+      margin-bottom: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 8px;
+      background: #fff;
+    }
+    .bcba-directory-result summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .bcba-directory-result ul {
+      margin: 6px 0 0 0;
+      padding-left: 18px;
+    }
+    .bcba-directory-result li {
+      margin: 2px 0;
+      color: #334155;
+    }
   </style>
 </head>
 <body>
   <div class="main-scroll">
-  <h2>Hidden Lights</h2>
+  <h2>Hidden Lights <span class="panel-build" id="panel-build-label"></span></h2>
 
   <div class="tab-bar">
+    <button type="button" class="tab active" data-panel="auto" aria-pressed="true">Concurrences</button>
     <button type="button" class="tab" data-panel="bcba-reports" aria-pressed="false">BCBA reports</button>
     <button type="button" class="tab" data-panel="rbt-reports" aria-pressed="false">RBT reports</button>
-    <button type="button" class="tab active" data-panel="auto" aria-pressed="true">Concurrences</button>
     <button type="button" class="tab" data-panel="manual" aria-pressed="false" hidden>Manual</button>
-  </div>
-
-  <div id="panel-bcba-reports" class="panel">
-    <div class="section">
-      <div class="section-title">BCBA reports</div>
-      <p class="section-hint">Coming soon.</p>
-    </div>
-  </div>
-
-  <div id="panel-rbt-reports" class="panel">
-    <div class="section">
-      <div class="section-title">RBT reports</div>
-      <p class="section-hint">Coming soon.</p>
-    </div>
   </div>
 
   <div id="panel-auto" class="panel active">
@@ -1097,6 +1223,111 @@
       <div id="overlap-fix-buttons" class="overlap-fix-list"></div>
       <div id="overlaps-result"></div>
       <div id="overlap-fix-result"></div>
+    </div>
+  </div>
+
+  <div id="panel-bcba-reports" class="panel">
+    <div class="section">
+      <div class="section-title">BCBA Directory</div>
+      <p class="section-hint">Opens the BCBA contacts label list, scrapes each BCBA, then loads connected clients for a full directory.</p>
+      <div class="buttons">
+        <button id="bcba-directory-btn" type="button" class="concurance-scan-btn" style="width:100%">Directory</button>
+      </div>
+      <div id="bcba-directory-status" class="section-hint" aria-live="polite"></div>
+      <div id="bcba-directory-result" class="bcba-directory-result" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div id="panel-rbt-reports" class="panel">
+    <div class="section">
+      <div class="section-title">RBT reports</div>
+      <div class="rbt-folder-box">
+        <div class="rbt-label">Clients folder (required)</div>
+        <button type="button" class="rbt-btn" id="rbt-btn-choose-folder">Choose Clients folder</button>
+      </div>
+      <div id="rbt-main-content" style="display:none;flex-direction:column;">
+        <div id="rbt-main-scroll">
+          <div id="rbt-queue-section" class="rbt-queue-box">
+            <div class="queue-header">Queue</div>
+            <button type="button" class="rbt-btn" id="rbt-btn-add-to-queue">Add to queue</button>
+            <div id="rbt-queue-list" class="rbt-queue-list"></div>
+          </div>
+          <button type="button" class="rbt-btn" id="rbt-btn-run-main">Generate report for only the Current Contact</button>
+          <div class="rbt-status" id="rbt-status">Ready.</div>
+          <div id="rbt-save-log" class="rbt-save-log"></div>
+          <div id="rbt-settings-section" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #d2d2d7;">
+            <h3 style="font-size:0.9rem;margin:0 0 8px;color:#0369a1;">Settings</h3>
+            <div class="rbt-form-row">
+              <label>Low utilization threshold (%)</label>
+              <input type="number" id="rbt-settings-low-util-threshold" value="80" min="0" max="100" placeholder="80">
+            </div>
+            <div class="rbt-form-row">
+              <label>Unfound clients folder name</label>
+              <input type="text" id="rbt-settings-unfound-folder" value="Unfound Clients" placeholder="Unfound Clients">
+            </div>
+            <div class="rbt-form-row">
+              <label>Auth to select</label>
+              <select id="rbt-settings-auth-selection">
+                <option value="current">Current / Most Recent</option>
+                <option value="1">Most Recent</option>
+                <option value="2">2nd Most Recent</option>
+                <option value="3">3rd Most Recent</option>
+              </select>
+            </div>
+            <button type="button" class="rbt-btn" id="rbt-btn-manual-mode" style="margin-top:12px;">Manual mode</button>
+            <div id="rbt-manual-mode-section" style="display:none;">
+              <h2 style="font-size:0.95rem;margin:12px 0 8px 0;color:#0369a1;border-top:1px solid #d2d2d7;padding-top:12px;">Run Full Report</h2>
+              <div id="rbt-run-full-form">
+                <div style="font-size:10px;color:#6e6e73;margin-bottom:6px;text-transform:uppercase;">PDF report fields</div>
+                <div class="rbt-form-row">
+                  <label>Client name</label>
+                  <input type="text" id="rbt-pdf-client-name" placeholder="Client name">
+                </div>
+                <div class="rbt-form-row">
+                  <label>DOB</label>
+                  <input type="text" id="rbt-pdf-dob" placeholder="DOB">
+                </div>
+                <div class="rbt-form-row">
+                  <label>Authorized hours</label>
+                  <input type="number" id="rbt-pdf-authorized-hours" placeholder="e.g. 364" min="0">
+                </div>
+                <div style="font-size:10px;color:#6e6e73;margin-top:2px;">Utilization % = (total duration ÷ authorized hours) × 100 — auto-calculated.</div>
+                <div style="font-size:10px;color:#6e6e73;margin:10px 0 6px;text-transform:uppercase;">Search filters &amp; auth period</div>
+                <div class="rbt-form-row" id="rbt-row-auth-date-range" style="display:none;">
+                  <label>Auth date range</label>
+                  <select id="rbt-run-auth-date-range">
+                    <option value="">— Select —</option>
+                  </select>
+                </div>
+                <div class="rbt-form-row">
+                  <label>Start date</label>
+                  <input type="text" id="rbt-run-start-date" value="08/04/2025" placeholder="MM/DD/YYYY">
+                </div>
+                <div class="rbt-form-row">
+                  <label>Stop date</label>
+                  <input type="text" id="rbt-run-stop-date" value="02/04/26" placeholder="MM/DD/YYYY">
+                </div>
+                <div class="rbt-form-row">
+                  <label>Contact ID</label>
+                  <input type="text" id="rbt-run-contact-id" value="3792429" placeholder="Contact ID">
+                </div>
+                <div class="rbt-form-row">
+                  <label>Service code</label>
+                  <select id="rbt-run-service-code">
+                    <option value="97153 tx">97153 tx</option>
+                    <option value="97155 tx t">97155 tx t</option>
+                    <option value="97156 tx t">97156 tx t</option>
+                    <option value="all" selected>All</option>
+                  </select>
+                </div>
+                <button type="button" class="rbt-btn" id="rbt-btn-load-contact-info">Load Contact Info</button>
+                <button type="button" class="rbt-btn" id="rbt-btn-run-full-report" data-action="runFullReport">Run Full Report</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="rbt-btn" id="rbt-btn-show-settings" style="margin-top:12px;">Show settings</button>
+      </div>
     </div>
   </div>
 

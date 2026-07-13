@@ -4,6 +4,9 @@ const path = require('path');
 const sidepanelDir = path.join(__dirname, '../sidepanel-source');
 const sidepanelPath = path.join(sidepanelDir, 'sidepanel.js');
 const htmlPath = path.join(sidepanelDir, 'sidepanel.html');
+const jspdfPath = path.join(sidepanelDir, 'lib/jspdf.umd.min.js');
+const rbtSelectorsPath = path.join(sidepanelDir, 'rbt-selectors.js');
+const rbtReportsPath = path.join(sidepanelDir, 'rbt-reports.js');
 
 let appCode = fs.readFileSync(sidepanelPath, 'utf8');
 appCode = appCode.replace(
@@ -26,11 +29,18 @@ body = body.replace(/<script\s+src="sidepanel\.js"[^>]*>\s*<\/script>\s*/gi, '')
 const fullHtml = '<style>' + style + '</style>' + body;
 const escapedHtml = fullHtml.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
+const jspdf = fs.existsSync(jspdfPath) ? fs.readFileSync(jspdfPath, 'utf8') + '\n' : '';
+const rbtSelectors = fs.existsSync(rbtSelectorsPath) ? fs.readFileSync(rbtSelectorsPath, 'utf8') + '\n' : '';
+const rbtReports = fs.existsSync(rbtReportsPath) ? fs.readFileSync(rbtReportsPath, 'utf8') + '\n' : '';
+
 const bootstrap = `(function(){
   var SH = window.SHELL;
   if (!SH || !SH.container) return;
   SH.container.innerHTML = \`${escapedHtml}\`;
 
 `;
-fs.writeFileSync(path.join(__dirname, 'app.js'), bootstrap + appCode + '\n})();');
+fs.writeFileSync(
+  path.join(__dirname, 'app.js'),
+  jspdf + bootstrap + rbtSelectors + appCode + '\n' + rbtReports + '\n})();'
+);
 console.log('Built app.js');

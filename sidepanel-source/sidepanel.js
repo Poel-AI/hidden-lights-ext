@@ -2,7 +2,13 @@
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
+const PANEL_BUILD = '2026-07-13tabs-dir-rbt';
 const logEl = document.getElementById('log');
+
+(function showPanelBuild() {
+  var el = document.getElementById('panel-build-label');
+  if (el) el.textContent = PANEL_BUILD;
+})();
 
 /* ---------- Mode visibility flags ---------- */
 const ENABLE_MANUAL_MODE = false;
@@ -8039,7 +8045,178 @@ document.getElementById('ai-saved-delete').addEventListener('click', () => {
 
 _ensureSettingsLoaded().then(() => _populateSavedSearchDropdown());
 
-// Tab bar: BCBA reports / RBT reports / Concurrences (CSP-safe, no inline script)
+/* ---------- BCBA Directory ---------- */
+const BCBA_CONTACTS_LIST_HASH = '#contacts/?contactLabelIdIncluded=1015524';
+
+async function navigateHash(tabId, fullHash) {
+  var h = fullHash.indexOf('#') === 0 ? fullHash : '#' + fullHash;
+  await execScript({
+    target: { tabId: tabId },
+    world: 'MAIN',
+    func: (hash) => {
+      window.location.hash = hash;
+    },
+    args: [h]
+  });
+}
+
+async function runNamedInjectAndPoll(tabId, scriptName, globalName, maxMs) {
+  await execScript({
+    target: { tabId: tabId },
+    func: (name) => {
+      window[name] = null;
+    },
+    args: [globalName]
+  });
+  if (typeof window.SHELL !== 'undefined' && window.SHELL.runScript) {
+    try {
+      await window.SHELL.runScript(scriptName);
+    } catch (e) {
+      /* fall through to files */
+    }
+  }
+  try {
+    await execScript({
+      target: { tabId: tabId },
+      files: [scriptName + '.js']
+    });
+  } catch (e2) {
+    /* SHELL path may already have run it */
+  }
+  return pollForInjectResult(tabId, globalName, maxMs || 120000, 400);
+}
+
+function renderBcbaDirectory(directory, statusEl, resultEl) {
+  if (!directory || !directory.length) {
+    resultEl.innerHTML = '<p>No BCBAs found.</p>';
+    return;
+  }
+  var html = '<p><strong>' + directory.length + '</strong> BCBA(s)</p>';
+  for (var i = 0; i < directory.length; i++) {
+    var bcba = directory[i];
+    var clients = bcba.clients || [];
+    html +=
+      '<details open>' +
+      '<summary>' +
+      escapeHtml(bcba.name || 'BCBA') +
+      ' <span style="font-weight:500;color:#64748b">(' +
+      escapeHtml(String(bcba.id || '')) +
+      ') — ' +
+      clients.length +
+      ' client(s)</span></summary>';
+    if (bcba.error) {
+      html += '<p style="color:#b91c1c">' + escapeHtml(bcba.error) + '</p>';
+    } else if (!clients.length) {
+      html += '<p style="color:#64748b">No connected clients.</p>';
+    } else {
+      html += '<ul>';
+      for (var j = 0; j < clients.length; j++) {
+        var c = clients[j];
+        html +=
+          '<li>' +
+          escapeHtml(c.name || '') +
+          ' <span style="color:#64748b">(ID: ' +
+          escapeHtml(String(c.id || '')) +
+          (c.type ? ' · ' + escapeHtml(c.type) : '') +
+          (c.status ? ' · ' + escapeHtml(c.status) : '') +
+          ')</span></li>';
+      }
+      html += '</ul>';
+    }
+    html += '</details>';
+  }
+  resultEl.innerHTML = html;
+}
+
+async function runBcbaDirectory() {
+  var statusEl = document.getElementById('bcba-directory-status');
+  var resultEl = document.getElementById('bcba-directory-result');
+  var btn = document.getElementById('bcba-directory-btn');
+  if (!statusEl || !resultEl) return;
+  if (btn) btn.disabled = true;
+  resultEl.innerHTML = '';
+  try {
+    var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    var tab = tabs && tabs[0];
+    if (!tab || !tab.id) throw new Error('No active tab.');
+    if (!(tab.url || '').startsWith('https://members.centralreach.com')) {
+      throw new Error('Open CentralReach (members.centralreach.com) first.');
+    }
+
+    statusEl.textContent = 'Opening BCBA contacts list…';
+    await navigateHash(tab.id, BCBA_CONTACTS_LIST_HASH);
+    await new Promise(function (r) {
+      setTimeout(r, 2000);
+    });
+
+    statusEl.textContent = 'Scraping BCBA list…';
+    var listRes = await runNamedInjectAndPoll(
+      tab.id,
+      'inject-read-contacts-list',
+      '__contactsListResult',
+      90000
+    );
+    if (!listRes || !listRes.success) {
+      throw new Error((listRes && listRes.error) || 'Could not read BCBA contacts list.');
+    }
+    var contacts = listRes.contacts || [];
+    if (!contacts.length) throw new Error('No BCBAs found on the contacts list.');
+
+    var directory = [];
+    for (var i = 0; i < contacts.length; i++) {
+      var bcba = contacts[i];
+      statusEl.textContent =
+        'Connected clients ' + (i + 1) + '/' + contacts.length + ': ' + (bcba.name || bcba.id) + '…';
+      var detailHash =
+        '#contacts/details/?id=' + encodeURIComponent(bcba.id) + '&mode=profile&edit=connected-clients';
+      await navigateHash(tab.id, detailHash);
+      await new Promise(function (r) {
+        setTimeout(r, 1800);
+      });
+      var clientsRes = await runNamedInjectAndPoll(
+        tab.id,
+        'inject-read-connected-clients',
+        '__connectedClientsResult',
+        180000
+      );
+      if (!clientsRes || !clientsRes.success) {
+        directory.push({
+          id: bcba.id,
+          name: bcba.name,
+          clients: [],
+          error: (clientsRes && clientsRes.error) || 'Failed to read connected clients'
+        });
+      } else {
+        directory.push({
+          id: bcba.id,
+          name: bcba.name,
+          clients: clientsRes.clients || []
+        });
+      }
+    }
+
+    statusEl.textContent = 'Done — ' + directory.length + ' BCBA(s).';
+    renderBcbaDirectory(directory, statusEl, resultEl);
+    log('BCBA Directory: ' + directory.length + ' BCBAs scraped.');
+  } catch (e) {
+    var msg = (e && e.message) || String(e);
+    statusEl.textContent = 'Error: ' + msg;
+    resultEl.innerHTML = '<p style="color:#b91c1c">' + escapeHtml(msg) + '</p>';
+    log('BCBA Directory error: ' + msg);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+(function initBcbaDirectory() {
+  var btn = document.getElementById('bcba-directory-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    runBcbaDirectory();
+  });
+})();
+
+// Tab bar: Concurrences / BCBA reports / RBT reports (CSP-safe, no inline script)
 (function initTabs() {
   const tabBar = document.querySelector('.tab-bar');
   const panels = {
