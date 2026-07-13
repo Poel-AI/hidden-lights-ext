@@ -1081,6 +1081,16 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
+    .rbt-folder-status {
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.35;
+      color: #64748b;
+      min-height: 1.2em;
+    }
+    .rbt-folder-status.is-error {
+      color: #b91c1c;
+    }
     .rbt-btn {
       display: block;
       width: 100%;
@@ -1277,6 +1287,7 @@
       <div class="rbt-folder-box">
         <div class="rbt-label">Clients folder (required)</div>
         <button type="button" class="rbt-btn" id="rbt-btn-choose-folder">Choose Clients folder</button>
+        <div id="rbt-folder-status" class="rbt-folder-status" aria-live="polite"></div>
       </div>
       <div id="rbt-main-content" style="display:none;flex-direction:column;">
         <div id="rbt-main-scroll">

@@ -84,12 +84,34 @@ let loadedHoursByCode = {};
 const QUEUE_STORAGE_KEY = 'hidden_lights_rbt_report_queue';
 let reportQueue = [];
 
-/** FileSystemDirectoryHandle for Clients base folder. Persisted in IndexedDB. */
+/**
+ * Clients base folder:
+ * - Native: real FileSystemDirectoryHandle (unpacked / non-sandbox sidepanel).
+ * - POEL shell: { __shellFs: true, name } — handle lives in unsandboxed parent.
+ */
 let customSaveDirHandle = null;
 
 const IDB_NAME = 'HiddenLightsRbtReports';
 const IDB_STORE = 'storage';
 const DIR_HANDLE_KEY = 'clientsFolder';
+
+function hasShellFs() {
+  return typeof window.SHELL !== 'undefined' && typeof window.SHELL.fsChooseDirectory === 'function';
+}
+
+function isShellFsHandle(h) {
+  return !!(h && h.__shellFs);
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
 
 function openIDB() {
   return new Promise((resolve, reject) => {
@@ -304,9 +326,22 @@ function savePdfFormToStorage() {
 const REPORTING_URL = 'https://members.centralreach.com/#reporting/104';
 
 function setStatus(text, isError = false) {
-  if (!statusEl) return;
-  statusEl.textContent = text;
-  statusEl.style.color = isError ? '#e08080' : '#888';
+  if (statusEl) {
+    statusEl.textContent = text;
+    statusEl.style.color = isError ? '#e08080' : '#888';
+  }
+  // rbt-status sits inside #rbt-main-content (hidden until a folder is chosen).
+  const main = document.getElementById('rbt-main-content');
+  const mainHidden = !main || main.style.display === 'none';
+  if (mainHidden) setFolderStatus(text, isError);
+}
+
+function setFolderStatus(text, isError = false) {
+  const el = document.getElementById('rbt-folder-status');
+  if (!el) return;
+  el.textContent = text || '';
+  if (isError) el.classList.add('is-error');
+  else el.classList.remove('is-error');
 }
 
 function appendLog(text) {
@@ -355,7 +390,7 @@ function normalizeForMatch(s) {
   return (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-/** Resolves Clients base -> client folder -> Auth Utilization -> next DS folder. Returns { dirHandle, logPath }. Caches per client so multiple PDFs in one run share the same DS folder. */
+/** Resolves Clients base -> client folder -> Auth Utilization -> next DS folder. Returns { dirHandle|shellPath, logPath }. Caches per client so multiple PDFs in one run share the same DS folder. */
 async function getSaveDirectoryForClient(clientName) {
   if (!customSaveDirHandle) return null;
   const name = (clientName || '').trim() || 'Pt';
@@ -365,13 +400,67 @@ async function getSaveDirectoryForClient(clientName) {
   const unfoundName = (document.getElementById('rbt-settings-unfound-folder')?.value || 'Unfound Clients').trim() || 'Unfound Clients';
   const clientNorm = normalizeForMatch(name);
 
+  if (isShellFsHandle(customSaveDirHandle) && hasShellFs()) {
+    try {
+      const entryNames = await window.SHELL.fsListDirectories([]);
+      let usedFolderName = '';
+      let clientPath = null;
+
+      const exact = entryNames.find((n) => normalizeForMatch(n) === clientNorm);
+      if (exact) {
+        usedFolderName = exact;
+        clientPath = [exact];
+        appendLog('Found client folder: "' + usedFolderName + '"');
+      } else {
+        const partial = entryNames.find((n) => {
+          const fn = normalizeForMatch(n);
+          return fn && clientNorm && (fn.includes(clientNorm) || clientNorm.includes(fn));
+        });
+        if (partial) {
+          usedFolderName = partial;
+          clientPath = [partial];
+          appendLog('Matched client folder: "' + usedFolderName + '"');
+        }
+      }
+
+      if (!clientPath) {
+        const safeName = (name || 'Pt').replace(/[/\\:*?"<>|]/g, '').trim().replace(/\s+/g, ' ') || 'Pt';
+        clientPath = [unfoundName, safeName];
+        await window.SHELL.fsEnsureDirectory(clientPath);
+        usedFolderName = unfoundName + '\\' + safeName;
+        queueRunUsedUnfound = true;
+        appendLogRed('Client not found, using: ' + usedFolderName);
+      }
+
+      const authPath = clientPath.concat([AUTH_UTIL_FOLDER]);
+      await window.SHELL.fsEnsureDirectory(authPath);
+      const dsNames = await window.SHELL.fsListDirectories(authPath);
+      let maxDs = 0;
+      for (let i = 0; i < dsNames.length; i++) {
+        const m = dsNames[i].match(/^ds(\d+)$/i);
+        if (m) maxDs = Math.max(maxDs, parseInt(m[1], 10));
+      }
+      const nextDs = 'DS' + (maxDs + 1);
+      const shellPath = authPath.concat([nextDs]);
+      await window.SHELL.fsEnsureDirectory(shellPath);
+      const logPath = usedFolderName + '\\' + AUTH_UTIL_FOLDER + '\\' + nextDs;
+      appendLog('Save path: ' + logPath);
+      cachedSaveDir = { shellPath: shellPath, logPath: logPath };
+      cachedSaveDirClient = name;
+      return cachedSaveDir;
+    } catch (e) {
+      appendLog('Error resolving path: ' + (e.message || String(e)));
+      throw e;
+    }
+  }
+
   let clientDirHandle = null;
   let usedFolderName = '';
 
   try {
     const entries = [];
-    for await (const [name, handle] of customSaveDirHandle.entries()) {
-      if (handle.kind === 'directory') entries.push({ name, handle });
+    for await (const [entryName, handle] of customSaveDirHandle.entries()) {
+      if (handle.kind === 'directory') entries.push({ name: entryName, handle });
     }
 
     const exact = entries.find((e) => normalizeForMatch(e.name) === clientNorm);
@@ -403,9 +492,9 @@ async function getSaveDirectoryForClient(clientName) {
     const authUtil = await clientDirHandle.getDirectoryHandle(AUTH_UTIL_FOLDER, { create: true });
 
     let maxDs = 0;
-    for await (const [name, handle] of authUtil.entries()) {
+    for await (const [entryName, handle] of authUtil.entries()) {
       if (handle.kind !== 'directory') continue;
-      const m = name.match(/^ds(\d+)$/i);
+      const m = entryName.match(/^ds(\d+)$/i);
       if (m) maxDs = Math.max(maxDs, parseInt(m[1], 10));
     }
     const nextDs = 'DS' + (maxDs + 1);
@@ -1863,10 +1952,17 @@ async function runPdfExport(tab, options = {}) {
         setStatus('No save folder chosen.', true);
         return false;
       }
-      const fileHandle = await resolved.dirHandle.getFileHandle(baseFilename, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(blob);
-      await writable.close();
+      if (resolved.shellPath && hasShellFs()) {
+        const ab = await blob.arrayBuffer();
+        await window.SHELL.fsWriteFile(resolved.shellPath, baseFilename, arrayBufferToBase64(ab));
+      } else if (resolved.dirHandle) {
+        const fileHandle = await resolved.dirHandle.getFileHandle(baseFilename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      } else {
+        throw new Error('No writable save path');
+      }
       appendLog('Saved: ' + baseFilename + ' -> ' + resolved.logPath);
       setStatus('Exported ' + rows.length + ' rows to ' + resolved.logPath);
     } catch (e) {
@@ -1874,7 +1970,11 @@ async function runPdfExport(tab, options = {}) {
         queueRunUsedFallback = true;
         appendLogRed('Folder access expired. Using Downloads folder.');
         customSaveDirHandle = null;
-        await clearDirHandleFromStorage();
+        if (hasShellFs()) {
+          try { await window.SHELL.fsClear(); } catch (_e) { /* ignore */ }
+        } else {
+          await clearDirHandleFromStorage();
+        }
         updateChosenFolderUIFull();
         rbtDownloadBlob(blob, baseFilename, rows.length);
       } else {
@@ -1892,19 +1992,41 @@ async function runPdfExport(tab, options = {}) {
 
 function doChooseFolder() {
   return (async () => {
-    if (!('showDirectoryPicker' in self)) {
-      setStatus('Choose folder not supported in this browser.', true);
-      return;
-    }
+    setFolderStatus('Opening folder picker…', false);
     try {
+      if (hasShellFs()) {
+        const res = await window.SHELL.fsChooseDirectory();
+        if (!res || res.cancelled) {
+          setFolderStatus('Folder selection cancelled.', false);
+          return;
+        }
+        customSaveDirHandle = { __shellFs: true, name: res.name || 'Chosen folder' };
+        clearSaveDirCache();
+        updateChosenFolderUIFull();
+        setStatus('Clients folder chosen: ' + (res.name || 'folder') + '. Saved for next time.');
+        return;
+      }
+      if (!('showDirectoryPicker' in self)) {
+        setStatus(
+          'Choose folder is not available here (sandboxed POEL panel). Reload the POEL CLIENTS extension so the shell can open the folder picker.',
+          true
+        );
+        return;
+      }
       const handle = await showDirectoryPicker({ mode: 'readwrite' });
       customSaveDirHandle = handle;
       await saveDirHandleToStorage(handle);
+      clearSaveDirCache();
       updateChosenFolderUIFull();
       setStatus('Clients folder chosen. Saved for next time.');
     } catch (e) {
-      if (e.name === 'AbortError') return;
-      setStatus('Could not open folder: ' + (e.message || 'Unknown error'), true);
+      if (e && e.name === 'AbortError') {
+        setFolderStatus('Folder selection cancelled.', false);
+        return;
+      }
+      const msg = (e && e.message) || 'Unknown error';
+      console.error('[RBT reports] choose folder failed:', e);
+      setStatus('Could not open folder: ' + msg, true);
     }
   })();
 }
@@ -1919,6 +2041,19 @@ async function verifyDirHandle(handle) {
 }
 
 async function restoreDirHandle() {
+  if (hasShellFs()) {
+    try {
+      const info = await window.SHELL.fsGetChosen();
+      if (info && info.name) {
+        customSaveDirHandle = { __shellFs: true, name: info.name };
+        updateChosenFolderUIFull();
+        setFolderStatus('Restored folder: ' + info.name, false);
+        return;
+      }
+    } catch (e) {
+      console.warn('[RBT reports] shell fsGetChosen failed:', e);
+    }
+  }
   const handle = await loadDirHandleFromStorage();
   if (!handle) return;
   const valid = await verifyDirHandle(handle);
