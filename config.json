@@ -8,7 +8,8 @@
     "runScriptReturnGlobal": {
       "inject-select-payor-option": "__selectPayorOptionResult",
       "inject-select-visit-location-cards": "__selectVisitLocationResult",
-      "inject-select-fee-schedule-role": "__selectFeeScheduleRoleResult"
+      "inject-select-fee-schedule-role": "__selectFeeScheduleRoleResult",
+      "inject-read-upcoming-appointments": "__upcomingAppointmentsResult"
     },
     "overlapScanByKey": {
       "default": { "script": "inject-overlaps", "returnGlobal": "__overlapsResult" },
@@ -16,13 +17,14 @@
     }
   },
   "scripts": {
-    "app": { "version": "4" },
+    "app": { "version": "5" },
     "inject-draw": { "version": "1" },
     "inject-overlaps": { "version": "3" },
     "inject-overlaps-97155": { "version": "7" },
     "inject-read-timesheet": { "version": "4" },
     "inject-read-contacts-list": { "version": "1" },
     "inject-read-connected-clients": { "version": "1" },
+    "inject-read-upcoming-appointments": { "version": "1" },
     "inject-service-line-tab-count": { "version": "1" },
     "inject-add-service-line": { "version": "2" },
     "inject-set-date-of-service": { "version": "1" },

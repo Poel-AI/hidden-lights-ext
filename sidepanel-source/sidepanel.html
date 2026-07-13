@@ -1259,12 +1259,15 @@
   <div id="panel-bcba-reports" class="panel">
     <div class="section">
       <div class="section-title">BCBA Directory</div>
-      <p class="section-hint">Scrapes BCBA contacts and connected clients (name + ID). Testing limit: first 3 BCBAs. Directory is saved locally and restored on reload.</p>
+      <p class="section-hint">Scrapes BCBA contacts and connected clients (name + ID). Testing limit: first 3 BCBAs. Directory is saved locally and restored on reload. Upcoming appointments scans saved clients (first 3) and exports a PDF.</p>
       <div class="buttons">
-        <button id="bcba-directory-btn" type="button" class="concurance-scan-btn" style="width:100%">Directory</button>
+        <button id="bcba-directory-btn" type="button" class="concurance-scan-btn" style="flex:1">Directory</button>
+        <button id="bcba-upcoming-appointments-btn" type="button" class="concurance-scan-btn" style="flex:1">Upcoming appointments</button>
       </div>
       <div id="bcba-directory-status" class="section-hint" aria-live="polite"></div>
+      <div id="bcba-upcoming-appointments-status" class="section-hint" aria-live="polite"></div>
       <div id="bcba-directory-result" class="bcba-directory-result" aria-live="polite"></div>
+      <div id="bcba-upcoming-appointments-result" class="bcba-directory-result" aria-live="polite"></div>
     </div>
   </div>
 

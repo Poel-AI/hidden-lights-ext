@@ -1655,12 +1655,15 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   <div id="panel-bcba-reports" class="panel">
     <div class="section">
       <div class="section-title">BCBA Directory</div>
-      <p class="section-hint">Scrapes BCBA contacts and connected clients (name + ID). Testing limit: first 3 BCBAs. Directory is saved locally and restored on reload.</p>
+      <p class="section-hint">Scrapes BCBA contacts and connected clients (name + ID). Testing limit: first 3 BCBAs. Directory is saved locally and restored on reload. Upcoming appointments scans saved clients (first 3) and exports a PDF.</p>
       <div class="buttons">
-        <button id="bcba-directory-btn" type="button" class="concurance-scan-btn" style="width:100%">Directory</button>
+        <button id="bcba-directory-btn" type="button" class="concurance-scan-btn" style="flex:1">Directory</button>
+        <button id="bcba-upcoming-appointments-btn" type="button" class="concurance-scan-btn" style="flex:1">Upcoming appointments</button>
       </div>
       <div id="bcba-directory-status" class="section-hint" aria-live="polite"></div>
+      <div id="bcba-upcoming-appointments-status" class="section-hint" aria-live="polite"></div>
       <div id="bcba-directory-result" class="bcba-directory-result" aria-live="polite"></div>
+      <div id="bcba-upcoming-appointments-result" class="bcba-directory-result" aria-live="polite"></div>
     </div>
   </div>
 
@@ -2018,7 +2021,7 @@ var CENTRALREACH_SELECTORS = {
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-13bcba-dir';
+const PANEL_BUILD = '2026-07-13appt-scan';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
@@ -10235,8 +10238,10 @@ async function runBcbaDirectory() {
   var statusEl = document.getElementById('bcba-directory-status');
   var resultEl = document.getElementById('bcba-directory-result');
   var btn = document.getElementById('bcba-directory-btn');
+  var upcomingBtn = document.getElementById('bcba-upcoming-appointments-btn');
   if (!statusEl || !resultEl) return;
   if (btn) btn.disabled = true;
+  if (upcomingBtn) upcomingBtn.disabled = true;
   resultEl.innerHTML = '';
   try {
     var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -10341,6 +10346,7 @@ async function runBcbaDirectory() {
     log('BCBA Directory error: ' + msg);
   } finally {
     if (btn) btn.disabled = false;
+    if (upcomingBtn) upcomingBtn.disabled = false;
   }
 }
 
@@ -10361,6 +10367,334 @@ async function runBcbaDirectory() {
         '.';
     }
     renderBcbaDirectory(payload, statusEl, resultEl);
+  });
+})();
+
+/* ---------- BCBA Upcoming appointments ---------- */
+const BCBA_UPCOMING_APPTS_TEST_LIMIT = 3;
+const BCBA_UPCOMING_APPTS_PAUSE_MS = BCBA_DIRECTORY_PAUSE_MS;
+const BCBA_UPCOMING_APPTS_STORAGE_KEY = 'hidden_lights_client_appointments';
+
+function flattenDirectoryClients(bcbas) {
+  var out = [];
+  var seen = {};
+  for (var i = 0; i < (bcbas || []).length; i++) {
+    var bcba = bcbas[i] || {};
+    var clients = bcba.clients || [];
+    for (var j = 0; j < clients.length; j++) {
+      var c = clients[j] || {};
+      var id = c.id != null ? String(c.id).trim() : '';
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      out.push({
+        id: id,
+        name: c.name || ('Client ' + id),
+        bcbaId: bcba.id != null ? String(bcba.id) : '',
+        bcbaName: bcba.name || ''
+      });
+    }
+  }
+  return out;
+}
+
+function saveClientAppointmentsToStorage(payload) {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    var obj = {};
+    obj[BCBA_UPCOMING_APPTS_STORAGE_KEY] = payload;
+    chrome.storage.local.set(obj);
+  } else {
+    try {
+      localStorage.setItem(BCBA_UPCOMING_APPTS_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+}
+
+function renderUpcomingAppointmentsResult(payload, resultEl) {
+  if (!resultEl) return;
+  var clients = (payload && payload.clients) || [];
+  if (!clients.length) {
+    resultEl.innerHTML = '<p>No clients scanned.</p>';
+    return;
+  }
+  var html =
+    '<p><strong>' +
+    clients.length +
+    '</strong> client(s) scanned' +
+    (payload && payload.savedAt ? ' · ' + escapeHtml(String(payload.savedAt)) : '') +
+    (payload && payload.pdfFileName ? ' · PDF: ' + escapeHtml(payload.pdfFileName) : '') +
+    '</p>';
+  for (var i = 0; i < clients.length; i++) {
+    var row = clients[i];
+    var appts = row.appointments || [];
+    html +=
+      '<details open>' +
+      '<summary>' +
+      escapeHtml(row.name || 'Client') +
+      ' <span style="font-weight:500;color:#64748b">(ID: ' +
+      escapeHtml(String(row.id || '')) +
+      ') — BCBA: ' +
+      escapeHtml(row.bcbaName || row.bcbaId || '—') +
+      ' — ' +
+      appts.length +
+      ' appt(s)</span></summary>';
+    if (row.error) {
+      html += '<p style="color:#b91c1c">' + escapeHtml(row.error) + '</p>';
+    } else if (!appts.length) {
+      html += '<p style="color:#64748b">No upcoming appointments.</p>';
+    } else {
+      html += '<ul>';
+      for (var j = 0; j < appts.length; j++) {
+        var a = appts[j];
+        html +=
+          '<li>' +
+          escapeHtml(a.time || '') +
+          (a.provider ? ' — ' + escapeHtml(a.provider) : '') +
+          (a.serviceType ? ' <span style="color:#64748b">(' + escapeHtml(a.serviceType) + ')</span>' : '') +
+          (a.address ? ' · ' + escapeHtml(a.address) : '') +
+          (a.hidden ? ' <span style="color:#94a3b8">[hidden]</span>' : '') +
+          '</li>';
+      }
+      html += '</ul>';
+    }
+    html += '</details>';
+  }
+  resultEl.innerHTML = html;
+}
+
+function downloadUpcomingAppointmentsPdf(payload) {
+  var jspdfNs = window.jspdf;
+  var jsPDF = jspdfNs && jspdfNs.jsPDF;
+  if (!jsPDF) {
+    throw new Error('PDF library (jsPDF) not loaded.');
+  }
+  var doc = new jsPDF({ orientation: 'portrait', unit: 'mm', compress: true });
+  var clients = (payload && payload.clients) || [];
+  var y = 14;
+  var lineH = 5;
+  var maxY = 280;
+  var margin = 12;
+  var pageW = 210;
+  var maxWidth = pageW - margin * 2;
+
+  function addLine(text, opts) {
+    opts = opts || {};
+    var fontSize = opts.fontSize || 10;
+    var fontStyle = opts.bold ? 'bold' : 'normal';
+    doc.setFontSize(fontSize);
+    doc.setFont(undefined, fontStyle);
+    var lines = doc.splitTextToSize(String(text || ''), maxWidth);
+    for (var i = 0; i < lines.length; i++) {
+      if (y > maxY) {
+        doc.addPage();
+        y = 14;
+      }
+      doc.text(lines[i], margin, y);
+      y += lineH;
+    }
+    if (opts.gap) y += opts.gap;
+  }
+
+  addLine('Upcoming appointments dump', { fontSize: 14, bold: true, gap: 2 });
+  addLine('Generated: ' + (payload.savedAt || new Date().toISOString()), { fontSize: 9, gap: 2 });
+  addLine(
+    'Clients scanned: ' +
+      clients.length +
+      ' (testing limit ' +
+      BCBA_UPCOMING_APPTS_TEST_LIMIT +
+      ')',
+    { fontSize: 9, gap: 4 }
+  );
+
+  for (var i = 0; i < clients.length; i++) {
+    var row = clients[i];
+    addLine(
+      (i + 1) +
+        '. ' +
+        (row.name || 'Client') +
+        ' (ID: ' +
+        (row.id || '') +
+        ')',
+      { bold: true, fontSize: 11, gap: 1 }
+    );
+    addLine('BCBA: ' + (row.bcbaName || '—') + (row.bcbaId ? ' (ID: ' + row.bcbaId + ')' : ''), {
+      fontSize: 9,
+      gap: 1
+    });
+    if (row.error) {
+      addLine('Error: ' + row.error, { fontSize: 9, gap: 3 });
+      continue;
+    }
+    var appts = row.appointments || [];
+    if (!appts.length) {
+      addLine('No upcoming appointments.', { fontSize: 9, gap: 3 });
+      continue;
+    }
+    for (var j = 0; j < appts.length; j++) {
+      var a = appts[j];
+      var bits = [
+        a.time || '',
+        a.provider || '',
+        a.serviceType || '',
+        a.address || '',
+        a.eventId ? 'eventId=' + a.eventId : '',
+        a.providerId ? 'providerId=' + a.providerId : '',
+        a.hidden ? '[hidden]' : ''
+      ].filter(Boolean);
+      addLine('  - ' + bits.join(' | '), { fontSize: 9 });
+    }
+    y += 3;
+  }
+
+  var blob = doc.output('blob');
+  var stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  var fileName = 'upcoming-appointments-' + stamp + '.pdf';
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      /* ignore */
+    }
+    if (a.parentNode) a.parentNode.removeChild(a);
+  }, 2000);
+  return fileName;
+}
+
+async function runBcbaUpcomingAppointments() {
+  var statusEl = document.getElementById('bcba-upcoming-appointments-status');
+  var resultEl = document.getElementById('bcba-upcoming-appointments-result');
+  var btn = document.getElementById('bcba-upcoming-appointments-btn');
+  var dirBtn = document.getElementById('bcba-directory-btn');
+  if (!statusEl || !resultEl) return;
+  if (btn) btn.disabled = true;
+  if (dirBtn) dirBtn.disabled = true;
+  resultEl.innerHTML = '';
+  try {
+    var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    var tab = tabs && tabs[0];
+    if (!tab || !tab.id) throw new Error('No active tab.');
+    if (!(tab.url || '').startsWith('https://members.centralreach.com')) {
+      throw new Error('Open CentralReach (members.centralreach.com) first.');
+    }
+
+    statusEl.textContent = 'Loading saved directory…';
+    var directoryPayload = await new Promise(function (resolve) {
+      loadBcbaDirectoryFromStorage(resolve);
+    });
+    var allClients = flattenDirectoryClients(directoryPayload && directoryPayload.bcbas);
+    if (!allClients.length) {
+      throw new Error('No saved directory clients. Run Directory first.');
+    }
+    var totalFound = allClients.length;
+    var clients = allClients.slice(0, BCBA_UPCOMING_APPTS_TEST_LIMIT);
+    var scanned = [];
+
+    for (var i = 0; i < clients.length; i++) {
+      var client = clients[i];
+      statusEl.textContent =
+        'Appointments ' +
+        (i + 1) +
+        '/' +
+        clients.length +
+        ' (of ' +
+        totalFound +
+        ' clients; testing limit ' +
+        BCBA_UPCOMING_APPTS_TEST_LIMIT +
+        '): ' +
+        (client.name || client.id) +
+        '…';
+      var detailHash = '#contacts/details/?id=' + encodeURIComponent(client.id);
+      await navigateHash(tab.id, detailHash);
+      await new Promise(function (r) {
+        setTimeout(r, BCBA_UPCOMING_APPTS_PAUSE_MS);
+      });
+      var apptRes = await runNamedInjectAndPoll(
+        tab.id,
+        'inject-read-upcoming-appointments',
+        '__upcomingAppointmentsResult',
+        60000
+      );
+      if (!apptRes || !apptRes.success) {
+        scanned.push({
+          id: client.id,
+          name: client.name,
+          bcbaId: client.bcbaId,
+          bcbaName: client.bcbaName,
+          appointments: [],
+          error: (apptRes && apptRes.error) || 'Failed to read upcoming appointments'
+        });
+      } else {
+        scanned.push({
+          id: client.id,
+          name: client.name,
+          bcbaId: client.bcbaId,
+          bcbaName: client.bcbaName,
+          appointments: apptRes.appointments || []
+        });
+      }
+    }
+
+    var payload = {
+      savedAt: new Date().toISOString(),
+      clients: scanned,
+      testLimit: BCBA_UPCOMING_APPTS_TEST_LIMIT,
+      totalDirectoryClients: totalFound
+    };
+    saveClientAppointmentsToStorage(payload);
+
+    statusEl.textContent = 'Building PDF…';
+    var pdfFileName = downloadUpcomingAppointmentsPdf(payload);
+    payload.pdfFileName = pdfFileName;
+    saveClientAppointmentsToStorage(payload);
+
+    var apptCount = 0;
+    for (var k = 0; k < scanned.length; k++) {
+      apptCount += ((scanned[k].appointments || []).length);
+    }
+    statusEl.textContent =
+      'Done — ' +
+      scanned.length +
+      ' client(s) of ' +
+      totalFound +
+      ' (testing limit). ' +
+      apptCount +
+      ' appointment(s). PDF downloaded: ' +
+      pdfFileName;
+    renderUpcomingAppointmentsResult(payload, resultEl);
+    log(
+      'Upcoming appointments: ' +
+        scanned.length +
+        ' clients (limit ' +
+        BCBA_UPCOMING_APPTS_TEST_LIMIT +
+        '); ' +
+        apptCount +
+        ' appts; PDF ' +
+        pdfFileName
+    );
+  } catch (e) {
+    var msg = (e && e.message) || String(e);
+    statusEl.textContent = 'Error: ' + msg;
+    resultEl.innerHTML = '<p style="color:#b91c1c">' + escapeHtml(msg) + '</p>';
+    log('Upcoming appointments error: ' + msg);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (dirBtn) dirBtn.disabled = false;
+  }
+}
+
+(function initBcbaUpcomingAppointments() {
+  var btn = document.getElementById('bcba-upcoming-appointments-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    runBcbaUpcomingAppointments();
   });
 })();
 
