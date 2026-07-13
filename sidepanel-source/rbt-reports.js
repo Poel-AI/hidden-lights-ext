@@ -189,14 +189,27 @@ function loadQueue() {
       renderQueue();
       updateMainButton();
     });
-  } else {
-    queueLoadInProgress = false;
+    return;
   }
+  try {
+    const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+    reportQueue = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(reportQueue)) reportQueue = [];
+  } catch (e) {
+    reportQueue = [];
+  }
+  queueLoadInProgress = false;
+  renderQueue();
+  updateMainButton();
 }
 
 function saveQueue() {
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
     chrome.storage.local.set({ [QUEUE_STORAGE_KEY]: reportQueue });
+  } else {
+    try {
+      localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(reportQueue));
+    } catch (e) { /* ignore */ }
   }
   queueLoadInProgress = false;
   renderQueue();
@@ -235,31 +248,38 @@ function updateMainButton() {
 function loadFormValues() {
   const cfg = typeof CENTRALREACH_SELECTORS !== 'undefined' ? CENTRALREACH_SELECTORS : {};
   const runDefaults = {
-    'rbt-run-start-date': (cfg.runAll && cfg.runAll.dateFrom) || RUN_FULL_DEFAULTS['run-start-date'],
-    'rbt-run-stop-date': (cfg.runAll && cfg.runAll.dateTo) || RUN_FULL_DEFAULTS['run-stop-date'],
-    'rbt-run-contact-id': cfg.defaultContactId || RUN_FULL_DEFAULTS['run-contact-id'],
-    'rbt-run-service-code': cfg.defaultServiceCode || RUN_FULL_DEFAULTS['run-service-code']
+    'rbt-run-start-date': (cfg.runAll && cfg.runAll.dateFrom) || RUN_FULL_DEFAULTS['rbt-run-start-date'],
+    'rbt-run-stop-date': (cfg.runAll && cfg.runAll.dateTo) || RUN_FULL_DEFAULTS['rbt-run-stop-date'],
+    'rbt-run-contact-id': cfg.defaultContactId || RUN_FULL_DEFAULTS['rbt-run-contact-id'],
+    'rbt-run-service-code': cfg.defaultServiceCode || RUN_FULL_DEFAULTS['rbt-run-service-code']
   };
   RUN_FULL_KEYS.forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.value = runDefaults[id] || '';
   });
+  function applyStored(stored) {
+    PDF_FORM_KEYS.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && stored[id] != null && String(stored[id]).trim() !== '') el.value = stored[id];
+    });
+    SETTINGS_KEYS.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el && stored[id] != null) el.value = stored[id];
+    });
+  }
   if (typeof chrome !== 'undefined' && chrome.storage?.local) {
     chrome.storage.local.get([...PDF_FORM_KEYS, ...SETTINGS_KEYS], (stored) => {
-      PDF_FORM_KEYS.forEach((id) => {
-        const el = document.getElementById(id);
-        if (el && stored[id] != null && String(stored[id]).trim() !== '') el.value = stored[id];
-      });
-      SETTINGS_KEYS.forEach((id) => {
-        const el = document.getElementById(id);
-        if (el && stored[id] != null) el.value = stored[id];
-      });
+      applyStored(stored || {});
     });
+  } else {
+    try {
+      const raw = localStorage.getItem('hidden_lights_rbt_form');
+      if (raw) applyStored(JSON.parse(raw) || {});
+    } catch (e) { /* ignore */ }
   }
 }
 
 function savePdfFormToStorage() {
-  if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
   const obj = {};
   PDF_FORM_KEYS.forEach((id) => {
     const el = document.getElementById(id);
@@ -273,11 +293,18 @@ function savePdfFormToStorage() {
     const el = document.getElementById(id);
     if (el) obj[id] = el.value || '';
   });
-  chrome.storage.local.set(obj);
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    chrome.storage.local.set(obj);
+  } else {
+    try {
+      localStorage.setItem('hidden_lights_rbt_form', JSON.stringify(obj));
+    } catch (e) { /* ignore */ }
+  }
 }
 const REPORTING_URL = 'https://members.centralreach.com/#reporting/104';
 
 function setStatus(text, isError = false) {
+  if (!statusEl) return;
   statusEl.textContent = text;
   statusEl.style.color = isError ? '#e08080' : '#888';
 }

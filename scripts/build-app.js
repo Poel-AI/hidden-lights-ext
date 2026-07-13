@@ -29,7 +29,10 @@ body = body.replace(/<script\s+src="sidepanel\.js"[^>]*>\s*<\/script>\s*/gi, '')
 const fullHtml = '<style>' + style + '</style>' + body;
 const escapedHtml = fullHtml.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
-const jspdf = fs.existsSync(jspdfPath) ? fs.readFileSync(jspdfPath, 'utf8') + '\n' : '';
+const jspdfRaw = fs.existsSync(jspdfPath) ? fs.readFileSync(jspdfPath, 'utf8') : '';
+const jspdf = jspdfRaw
+  ? '(function(){\ntry {\n' + jspdfRaw + '\n} catch (eJspdf) { console.warn("[Hidden Lights] jspdf load failed", eJspdf); }\n})();\n'
+  : '';
 const rbtSelectors = fs.existsSync(rbtSelectorsPath) ? fs.readFileSync(rbtSelectorsPath, 'utf8') + '\n' : '';
 const rbtReports = fs.existsSync(rbtReportsPath) ? fs.readFileSync(rbtReportsPath, 'utf8') + '\n' : '';
 
