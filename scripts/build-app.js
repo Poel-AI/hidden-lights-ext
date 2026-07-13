@@ -6,6 +6,7 @@ const sidepanelPath = path.join(sidepanelDir, 'sidepanel.js');
 const htmlPath = path.join(sidepanelDir, 'sidepanel.html');
 const jspdfPath = path.join(sidepanelDir, 'lib/jspdf.umd.min.js');
 const rbtSelectorsPath = path.join(sidepanelDir, 'rbt-selectors.js');
+const rbtPdfLogoPath = path.join(sidepanelDir, 'rbt-pdf-logo.js');
 const rbtReportsPath = path.join(sidepanelDir, 'rbt-reports.js');
 
 let appCode = fs.readFileSync(sidepanelPath, 'utf8');
@@ -34,6 +35,7 @@ const jspdf = jspdfRaw
   ? '(function(){\ntry {\n' + jspdfRaw + '\n} catch (eJspdf) { console.warn("[Hidden Lights] jspdf load failed", eJspdf); }\n})();\n'
   : '';
 const rbtSelectors = fs.existsSync(rbtSelectorsPath) ? fs.readFileSync(rbtSelectorsPath, 'utf8') + '\n' : '';
+const rbtPdfLogo = fs.existsSync(rbtPdfLogoPath) ? fs.readFileSync(rbtPdfLogoPath, 'utf8') + '\n' : '';
 const rbtReports = fs.existsSync(rbtReportsPath) ? fs.readFileSync(rbtReportsPath, 'utf8') + '\n' : '';
 
 const bootstrap = `(function(){
@@ -44,6 +46,6 @@ const bootstrap = `(function(){
 `;
 fs.writeFileSync(
   path.join(__dirname, 'app.js'),
-  jspdf + bootstrap + rbtSelectors + appCode + '\n' + rbtReports + '\n})();'
+  jspdf + bootstrap + rbtSelectors + rbtPdfLogo + appCode + '\n' + rbtReports + '\n})();'
 );
 console.log('Built app.js');

@@ -1915,7 +1915,12 @@ async function runPdfExport(tab, options = {}) {
     const rowH = 8;
     const headerH = 10;
 
-    /* logo skipped in Hidden Lights POEL build */
+    try {
+      if (typeof RBT_PDF_LOGO_JPEG === 'string' && RBT_PDF_LOGO_JPEG) {
+        const logoW = 70;
+        doc.addImage(RBT_PDF_LOGO_JPEG, 'JPEG', (pageW - logoW) / 2, logoMargin, logoW, logoH, undefined, 'FAST');
+      }
+    } catch (e) { /* logo optional */ }
 
     doc.setFontSize(14);
     doc.setFont(undefined, 'bold');
