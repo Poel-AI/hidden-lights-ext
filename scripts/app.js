@@ -2032,7 +2032,7 @@ var CENTRALREACH_SELECTORS = {
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-13rbt-fs-auto';
+const PANEL_BUILD = '2026-07-13rbt-poel';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
@@ -10987,10 +10987,44 @@ async function runBcbaUpcomingAppointments() {
 (function initHiddenLightsRbtReports() {
   if (!document.getElementById('rbt-btn-run-main')) return;
 
+  /**
+   * Wait for a tab to finish loading.
+   * Unpacked sidepanel has chrome.tabs.onUpdated; POEL sandbox does not —
+   * use SHELL.waitTabComplete (parent holds real chrome.tabs.onUpdated).
+   * Never call chrome.tabs.onUpdated.addListener from the sandboxed app.
+   */
   function rbtWaitTabComplete(tabId, timeoutMs) {
     var ms = timeoutMs != null ? timeoutMs : 10000;
-    if (typeof window.SHELL !== 'undefined' && window.SHELL.waitTabComplete) {
-      return window.SHELL.waitTabComplete(tabId, ms);
+    if (
+      typeof chrome !== 'undefined' &&
+      chrome.tabs &&
+      chrome.tabs.onUpdated &&
+      typeof chrome.tabs.onUpdated.addListener === 'function'
+    ) {
+      return new Promise(function (resolve) {
+        var done = false;
+        function finish() {
+          if (done) return;
+          done = true;
+          try { chrome.tabs.onUpdated.removeListener(listener); } catch (e) { /* ignore */ }
+          resolve();
+        }
+        function listener(id, changeInfo) {
+          if (id === tabId && changeInfo && changeInfo.status === 'complete') finish();
+        }
+        chrome.tabs.onUpdated.addListener(listener);
+        setTimeout(finish, ms);
+        try {
+          chrome.tabs.get(tabId).then(function (t) {
+            if (t && t.status === 'complete') finish();
+          }).catch(function () { /* ignore */ });
+        } catch (eGet) { /* ignore */ }
+      });
+    }
+    if (typeof window.SHELL !== 'undefined' && typeof window.SHELL.waitTabComplete === 'function') {
+      return window.SHELL.waitTabComplete(tabId, ms).catch(function () {
+        /* Match old extension: timeout resolves, does not throw. */
+      });
     }
     var deadline = Date.now() + ms;
     return (async function () {
@@ -10998,10 +11032,26 @@ async function runBcbaUpcomingAppointments() {
         try {
           var t = await chrome.tabs.get(tabId);
           if (t && t.status === 'complete') return;
-        } catch (e) {}
+        } catch (e) { /* ignore */ }
         await new Promise(function (r) { setTimeout(r, 250); });
       }
     })();
+  }
+
+  /** Reload active tab — POEL sandbox has no chrome.tabs.reload; use SHELL or update(url). */
+  async function rbtReloadTab(tab) {
+    if (!tab || tab.id == null) return;
+    if (typeof chrome !== 'undefined' && chrome.tabs && typeof chrome.tabs.reload === 'function') {
+      await chrome.tabs.reload(tab.id);
+      return;
+    }
+    if (typeof window.SHELL !== 'undefined' && typeof window.SHELL.reloadTab === 'function') {
+      await window.SHELL.reloadTab(tab.id);
+      return;
+    }
+    if (tab.url) {
+      await chrome.tabs.update(tab.id, { url: tab.url });
+    }
   }
 
   function rbtDownloadBlob(blob, baseFilename, rowCount) {
@@ -11973,20 +12023,8 @@ document.getElementById('rbt-btn-run-full-report').addEventListener('click', asy
     return;
   }
 
-  chrome.tabs.reload(tab.id);
-  await new Promise((resolve) => {
-    const listener = (tabId, changeInfo) => {
-      if (tabId === tab.id && changeInfo.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }
-    };
-    chrome.tabs.onUpdated.addListener(listener);
-    setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve();
-    }, 10000);
-  });
+  await rbtReloadTab(tab);
+  await rbtWaitTabComplete(tab.id, 10000);
   await new Promise(r => setTimeout(r, 1500));
 
   const cfg = typeof CENTRALREACH_SELECTORS !== 'undefined' ? CENTRALREACH_SELECTORS : {};
@@ -12551,19 +12589,7 @@ async function runFullReportFromContactForTab(tab, clientLabel = '') {
 
     setStatus(prefix + 'Step 7: Navigating to reporting…');
     chrome.tabs.update(tab.id, { url: REPORTING_URL });
-    await new Promise((resolve) => {
-      const listener = (tabId, changeInfo) => {
-        if (tabId === tab.id && changeInfo.status === 'complete') {
-          chrome.tabs.onUpdated.removeListener(listener);
-          resolve();
-        }
-      };
-      chrome.tabs.onUpdated.addListener(listener);
-      setTimeout(() => {
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }, 10000);
-    });
+    await rbtWaitTabComplete(tab.id, 10000);
     await delay(1500);
 
     let results;
@@ -12985,11 +13011,12 @@ async function runPdfExport(tab, options = {}) {
 
 function doChooseFolder() {
   return (async () => {
-    // In POEL, the shell immediately opens fs-chooser.html (out of sandbox).
-    // Status here is secondary to that shell overlay / tab UI.
+    // Old unpacked ext: 1 click → showDirectoryPicker in-panel.
+    // POEL: shell may open system picker immediately (userActivation forwarded),
+    // else one full-panel “Choose folder…” click — never a multi-step tab flow by default.
     setFolderStatus(
       hasShellFs()
-        ? 'Shell is opening the folder picker tab — choose the folder there…'
+        ? 'Opening folder picker…'
         : 'Opening folder picker…',
       false
     );
@@ -13009,10 +13036,10 @@ function doChooseFolder() {
       }
       if (!('showDirectoryPicker' in self) || typeof showDirectoryPicker !== 'function') {
         setStatus(
-          'Shell folder bridge missing. Reload unpacked POEL CLIENTS at chrome://extensions (v1.0.13+ with fs-chooser.html / SHELL.fsChooseDirectory), then click Update in the panel.',
+          'Shell folder bridge missing. Reload unpacked POEL CLIENTS at chrome://extensions (v1.0.14+), then click Update in the panel.',
           true
         );
-        setFolderStatus('Reload POEL CLIENTS shell (v1.0.13+), then Update app.', true);
+        setFolderStatus('Reload POEL CLIENTS shell (v1.0.14+), then Update app.', true);
         return;
       }
       const handle = await showDirectoryPicker({ mode: 'readwrite' });
@@ -13032,16 +13059,13 @@ function doChooseFolder() {
         /File System Access API is unavailable|showDirectoryPicker|not supported in this browser|Use Google Chrome/i.test(
           msg
         );
-      if (looksLikeBraveOrMissingApi) {
-        setStatus(
-          'Folder picker unavailable. Use Google Chrome (not Brave), reload unpacked POEL CLIENTS at chrome://extensions (v1.0.13+ with fs-chooser.html), then Update the app.',
-          true
-        );
-        setFolderStatus('Use Chrome + reload POEL CLIENTS (folder picker tab).', true);
-        return;
-      }
-      setStatus('Could not open folder: ' + msg, true);
-      setFolderStatus(msg, true);
+      setStatus(
+        looksLikeBraveOrMissingApi
+          ? 'Folder picker unavailable. Use Google Chrome and reload POEL CLIENTS (v1.0.14+).'
+          : 'Could not open folder: ' + msg,
+        true
+      );
+      setFolderStatus(looksLikeBraveOrMissingApi ? 'Reload POEL CLIENTS / use Chrome.' : msg, true);
     }
   })();
 }
