@@ -2,7 +2,7 @@
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-13rbt-folder-shell';
+const PANEL_BUILD = '2026-07-13rbt-folder-tab';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
