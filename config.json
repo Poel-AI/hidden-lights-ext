@@ -17,7 +17,7 @@
     }
   },
   "scripts": {
-    "app": { "version": "5" },
+    "app": { "version": "6" },
     "inject-draw": { "version": "1" },
     "inject-overlaps": { "version": "3" },
     "inject-overlaps-97155": { "version": "7" },

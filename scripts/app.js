@@ -2021,7 +2021,7 @@ var CENTRALREACH_SELECTORS = {
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-13appt-scan';
+const PANEL_BUILD = '2026-07-13appt-dirfix';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
@@ -10070,6 +10070,8 @@ const BCBA_CONTACTS_LIST_HASH = '#contacts/?contactLabelIdIncluded=1015524';
 const BCBA_DIRECTORY_TEST_LIMIT = 3;
 const BCBA_DIRECTORY_PAUSE_MS = 1500;
 const BCBA_DIRECTORY_STORAGE_KEY = 'hidden_lights_bcba_directory';
+/** In-panel cache so Upcoming works immediately after Directory (POEL sandbox storage is flaky). */
+var _bcbaDirectoryMemory = null;
 
 async function navigateHash(tabId, fullHash) {
   var h = fullHash.indexOf('#') === 0 ? fullHash : '#' + fullHash;
@@ -10111,13 +10113,41 @@ async function runNamedInjectAndPoll(tabId, scriptName, globalName, maxMs) {
 
 function normalizeBcbaDirectoryPayload(payload) {
   if (!payload) return null;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch (e) {
+      return null;
+    }
+  }
   if (Array.isArray(payload)) {
     return { savedAt: null, bcbas: payload };
   }
   if (payload.bcbas && Array.isArray(payload.bcbas)) {
     return { savedAt: payload.savedAt || null, bcbas: payload.bcbas };
   }
+  // Legacy / mistaken top-level clients list — wrap so load never looks empty incorrectly.
+  if (payload.clients && Array.isArray(payload.clients)) {
+    return {
+      savedAt: payload.savedAt || null,
+      bcbas: [{ id: '', name: '', clients: payload.clients }]
+    };
+  }
   return null;
+}
+
+function clientIdFromDirectoryRow(c) {
+  if (!c || typeof c !== 'object') {
+    if (c == null || c === '') return '';
+    return String(c).trim();
+  }
+  var raw = c.id != null ? c.id : c.clientId != null ? c.clientId : '';
+  return raw != null && raw !== '' ? String(raw).trim() : '';
+}
+
+function clientNameFromDirectoryRow(c) {
+  if (!c || typeof c !== 'object') return '';
+  return String(c.name || c.clientName || '').trim();
 }
 
 function collectBcbaClientIds(bcbas) {
@@ -10126,7 +10156,7 @@ function collectBcbaClientIds(bcbas) {
   for (var i = 0; i < (bcbas || []).length; i++) {
     var clients = (bcbas[i] && bcbas[i].clients) || [];
     for (var j = 0; j < clients.length; j++) {
-      var id = clients[j] && clients[j].id != null ? String(clients[j].id).trim() : '';
+      var id = clientIdFromDirectoryRow(clients[j]);
       if (!id || seen[id]) continue;
       seen[id] = true;
       ids.push(id);
@@ -10135,34 +10165,137 @@ function collectBcbaClientIds(bcbas) {
   return ids;
 }
 
+function readBcbaDirectoryFromPanelLocalStorage() {
+  try {
+    var raw = localStorage.getItem(BCBA_DIRECTORY_STORAGE_KEY);
+    return normalizeBcbaDirectoryPayload(raw ? JSON.parse(raw) : null);
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeBcbaDirectoryToPanelLocalStorage(payload) {
+  try {
+    localStorage.setItem(BCBA_DIRECTORY_STORAGE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    /* POEL sandbox may throw — page mirror covers persistence */
+  }
+}
+
+/** Mirror directory into CentralReach tab localStorage (same pattern as settings; works under POEL). */
+async function writeBcbaDirectoryToPageStorage(payload) {
+  try {
+    var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    var tab = tabs && tabs[0];
+    if (!tab || !tab.id) return;
+    await execScript({
+      target: { tabId: tab.id },
+      func: (key, val) => {
+        try {
+          localStorage.setItem(key, JSON.stringify(val));
+        } catch (e) {
+          /* ignore */
+        }
+      },
+      args: [BCBA_DIRECTORY_STORAGE_KEY, payload]
+    });
+  } catch (e) {
+    console.warn('[BCBA Directory] page write failed:', e);
+  }
+}
+
+async function readBcbaDirectoryFromPageStorage() {
+  try {
+    var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    var tab = tabs && tabs[0];
+    if (!tab || !tab.id) return null;
+    var results = await execScript({
+      target: { tabId: tab.id },
+      func: (key) => {
+        try {
+          var r = localStorage.getItem(key);
+          return r ? JSON.parse(r) : null;
+        } catch (e) {
+          return null;
+        }
+      },
+      args: [BCBA_DIRECTORY_STORAGE_KEY]
+    });
+    return normalizeBcbaDirectoryPayload(results && results[0] && results[0].result);
+  } catch (e) {
+    console.warn('[BCBA Directory] page read failed:', e);
+    return null;
+  }
+}
+
+function directoryPayloadHasBcbas(payload) {
+  return !!(payload && payload.bcbas && payload.bcbas.length);
+}
+
+/**
+ * Dual-write like RBT harden + settings page mirror:
+ * memory → panel localStorage → chrome.storage (unpacked) → CR tab localStorage (POEL).
+ */
 function saveBcbaDirectoryToStorage(payload) {
+  var normalized = normalizeBcbaDirectoryPayload(payload);
+  if (!normalized) return;
+  _bcbaDirectoryMemory = normalized;
+  writeBcbaDirectoryToPanelLocalStorage(normalized);
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    var obj = {};
-    obj[BCBA_DIRECTORY_STORAGE_KEY] = payload;
-    chrome.storage.local.set(obj);
-  } else {
     try {
-      localStorage.setItem(BCBA_DIRECTORY_STORAGE_KEY, JSON.stringify(payload));
+      var obj = {};
+      obj[BCBA_DIRECTORY_STORAGE_KEY] = normalized;
+      chrome.storage.local.set(obj);
     } catch (e) {
       /* ignore */
     }
   }
+  writeBcbaDirectoryToPageStorage(normalized);
 }
 
+/**
+ * Prefer memory (same session after Directory), then chrome.storage, panel localStorage,
+ * then CentralReach page localStorage — same restore path Directory UI uses.
+ */
 function loadBcbaDirectoryFromStorage(done) {
-  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(BCBA_DIRECTORY_STORAGE_KEY, function (o) {
-      var payload = normalizeBcbaDirectoryPayload(o && o[BCBA_DIRECTORY_STORAGE_KEY]);
-      done(payload);
+  function finish(payload) {
+    var n = normalizeBcbaDirectoryPayload(payload);
+    if (directoryPayloadHasBcbas(n)) _bcbaDirectoryMemory = n;
+    done(n);
+  }
+
+  function tryPanelThenPage() {
+    var local = readBcbaDirectoryFromPanelLocalStorage();
+    if (directoryPayloadHasBcbas(local)) {
+      finish(local);
+      return;
+    }
+    readBcbaDirectoryFromPageStorage().then(finish).catch(function () {
+      finish(null);
     });
+  }
+
+  if (directoryPayloadHasBcbas(_bcbaDirectoryMemory)) {
+    done(_bcbaDirectoryMemory);
     return;
   }
-  try {
-    var raw = localStorage.getItem(BCBA_DIRECTORY_STORAGE_KEY);
-    done(normalizeBcbaDirectoryPayload(raw ? JSON.parse(raw) : null));
-  } catch (e) {
-    done(null);
+
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    try {
+      chrome.storage.local.get(BCBA_DIRECTORY_STORAGE_KEY, function (o) {
+        var payload = normalizeBcbaDirectoryPayload(o && o[BCBA_DIRECTORY_STORAGE_KEY]);
+        if (directoryPayloadHasBcbas(payload)) {
+          finish(payload);
+          return;
+        }
+        tryPanelThenPage();
+      });
+      return;
+    } catch (e) {
+      /* fall through */
+    }
   }
+  tryPanelThenPage();
 }
 
 function renderBcbaDirectory(payload, statusEl, resultEl) {
@@ -10320,6 +10453,7 @@ async function runBcbaDirectory() {
       bcbas: directory
     };
     saveBcbaDirectoryToStorage(payload);
+    await writeBcbaDirectoryToPageStorage(payload);
     var allIds = collectBcbaClientIds(directory);
     statusEl.textContent =
       'Done — ' +
@@ -10376,23 +10510,54 @@ const BCBA_UPCOMING_APPTS_PAUSE_MS = BCBA_DIRECTORY_PAUSE_MS;
 const BCBA_UPCOMING_APPTS_STORAGE_KEY = 'hidden_lights_client_appointments';
 
 function flattenDirectoryClients(bcbas) {
-  var out = [];
-  var seen = {};
+  var byId = {};
+  var order = [];
   for (var i = 0; i < (bcbas || []).length; i++) {
     var bcba = bcbas[i] || {};
+    var bcbaId = bcba.id != null ? String(bcba.id).trim() : '';
+    var bcbaName = String(bcba.name || '').trim();
     var clients = bcba.clients || [];
     for (var j = 0; j < clients.length; j++) {
-      var c = clients[j] || {};
-      var id = c.id != null ? String(c.id).trim() : '';
-      if (!id || seen[id]) continue;
-      seen[id] = true;
-      out.push({
-        id: id,
-        name: c.name || ('Client ' + id),
-        bcbaId: bcba.id != null ? String(bcba.id) : '',
-        bcbaName: bcba.name || ''
-      });
+      var c = clients[j];
+      var id = clientIdFromDirectoryRow(c);
+      if (!id) continue;
+      var name = clientNameFromDirectoryRow(c) || 'Client ' + id;
+      if (!byId[id]) {
+        byId[id] = {
+          clientId: id,
+          clientName: name,
+          id: id,
+          name: name,
+          bcbaId: bcbaId,
+          bcbaName: bcbaName,
+          bcbas: []
+        };
+        order.push(id);
+      } else if (!byId[id].clientName || byId[id].clientName === 'Client ' + id) {
+        byId[id].clientName = name;
+        byId[id].name = name;
+      }
+      var list = byId[id].bcbas;
+      var already = false;
+      for (var k = 0; k < list.length; k++) {
+        if (list[k].id === bcbaId && list[k].name === bcbaName) {
+          already = true;
+          break;
+        }
+      }
+      if (!already) {
+        list.push({ id: bcbaId, name: bcbaName });
+      }
+      // Prefer first BCBA link as primary; never drop later links from bcbas[].
+      if (!byId[id].bcbaId && bcbaId) {
+        byId[id].bcbaId = bcbaId;
+        byId[id].bcbaName = bcbaName;
+      }
     }
+  }
+  var out = [];
+  for (var n = 0; n < order.length; n++) {
+    out.push(byId[order[n]]);
   }
   return out;
 }
@@ -10431,11 +10596,12 @@ function renderUpcomingAppointmentsResult(payload, resultEl) {
     html +=
       '<details open>' +
       '<summary>' +
-      escapeHtml(row.name || 'Client') +
+      escapeHtml(row.clientName || row.name || 'Client') +
       ' <span style="font-weight:500;color:#64748b">(ID: ' +
-      escapeHtml(String(row.id || '')) +
+      escapeHtml(String(row.clientId || row.id || '')) +
       ') — BCBA: ' +
       escapeHtml(row.bcbaName || row.bcbaId || '—') +
+      (row.bcbaId ? ' (ID: ' + escapeHtml(String(row.bcbaId)) + ')' : '') +
       ' — ' +
       appts.length +
       ' appt(s)</span></summary>';
@@ -10512,9 +10678,9 @@ function downloadUpcomingAppointmentsPdf(payload) {
     addLine(
       (i + 1) +
         '. ' +
-        (row.name || 'Client') +
+        (row.clientName || row.name || 'Client') +
         ' (ID: ' +
-        (row.id || '') +
+        (row.clientId || row.id || '') +
         ')',
       { bold: true, fontSize: 11, gap: 1 }
     );
@@ -10522,6 +10688,14 @@ function downloadUpcomingAppointmentsPdf(payload) {
       fontSize: 9,
       gap: 1
     });
+    if (row.bcbas && row.bcbas.length > 1) {
+      var extra = [];
+      for (var bi = 0; bi < row.bcbas.length; bi++) {
+        var b = row.bcbas[bi];
+        extra.push((b.name || '—') + (b.id ? ' (ID: ' + b.id + ')' : ''));
+      }
+      addLine('All BCBA links: ' + extra.join('; '), { fontSize: 8, gap: 1 });
+    }
     if (row.error) {
       addLine('Error: ' + row.error, { fontSize: 9, gap: 3 });
       continue;
@@ -10591,6 +10765,11 @@ async function runBcbaUpcomingAppointments() {
     });
     var allClients = flattenDirectoryClients(directoryPayload && directoryPayload.bcbas);
     if (!allClients.length) {
+      if (directoryPayloadHasBcbas(directoryPayload)) {
+        throw new Error(
+          'Saved directory has BCBAs but no client IDs. Re-run Directory.'
+        );
+      }
       throw new Error('No saved directory clients. Run Directory first.');
     }
     var totalFound = allClients.length;
@@ -10599,6 +10778,8 @@ async function runBcbaUpcomingAppointments() {
 
     for (var i = 0; i < clients.length; i++) {
       var client = clients[i];
+      var clientId = client.clientId || client.id;
+      var clientName = client.clientName || client.name;
       statusEl.textContent =
         'Appointments ' +
         (i + 1) +
@@ -10609,9 +10790,9 @@ async function runBcbaUpcomingAppointments() {
         ' clients; testing limit ' +
         BCBA_UPCOMING_APPTS_TEST_LIMIT +
         '): ' +
-        (client.name || client.id) +
+        (clientName || clientId) +
         '…';
-      var detailHash = '#contacts/details/?id=' + encodeURIComponent(client.id);
+      var detailHash = '#contacts/details/?id=' + encodeURIComponent(clientId);
       await navigateHash(tab.id, detailHash);
       await new Promise(function (r) {
         setTimeout(r, BCBA_UPCOMING_APPTS_PAUSE_MS);
@@ -10624,19 +10805,25 @@ async function runBcbaUpcomingAppointments() {
       );
       if (!apptRes || !apptRes.success) {
         scanned.push({
-          id: client.id,
-          name: client.name,
+          clientId: clientId,
+          clientName: clientName,
+          id: clientId,
+          name: clientName,
           bcbaId: client.bcbaId,
           bcbaName: client.bcbaName,
+          bcbas: client.bcbas || [],
           appointments: [],
           error: (apptRes && apptRes.error) || 'Failed to read upcoming appointments'
         });
       } else {
         scanned.push({
-          id: client.id,
-          name: client.name,
+          clientId: clientId,
+          clientName: clientName,
+          id: clientId,
+          name: clientName,
           bcbaId: client.bcbaId,
           bcbaName: client.bcbaName,
+          bcbas: client.bcbas || [],
           appointments: apptRes.appointments || []
         });
       }
