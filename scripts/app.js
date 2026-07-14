@@ -1649,6 +1649,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     <button type="button" class="tab" data-panel="rbt-reports" aria-pressed="false">RBT reports</button>
     <button type="button" class="tab" data-panel="manual" aria-pressed="false" hidden>Manual</button>
   </div>
+  <div id="features-access-msg" class="section-hint" style="display:none;margin:12px 0;" role="status" aria-live="polite">
+    No sections are enabled for this account. Contact your admin if you need access.
+  </div>
 
   <div id="panel-auto" class="panel active">
     <div class="section" id="overlap-fix-section">
@@ -2035,7 +2038,7 @@ const RBT_PDF_LOGO_JPEG = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAkACQAAD/4Q
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-13rbt-logo';
+const PANEL_BUILD = '2026-07-14features';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
@@ -2046,6 +2049,40 @@ const logEl = document.getElementById('log');
 /* ---------- Mode visibility flags ---------- */
 const ENABLE_MANUAL_MODE = false;
 const ENABLE_AI_SEARCH_MODE = false;
+
+/**
+ * Config `features` → top tab panels.
+ * - No `features` object (local unpacked / old API): all three on.
+ * - `features` present: missing or falsy key = disabled (e.g. omit rbtReports to hide RBT).
+ */
+const FEATURE_TO_PANEL = {
+  concurrences: 'auto',
+  bcbaReports: 'bcba-reports',
+  rbtReports: 'rbt-reports'
+};
+
+function resolveSectionFeatureFlags(config) {
+  var features = config && config.features;
+  if (!features || typeof features !== 'object') {
+    return { concurrences: true, bcbaReports: true, rbtReports: true };
+  }
+  return {
+    concurrences: !!features.concurrences,
+    bcbaReports: !!features.bcbaReports,
+    rbtReports: !!features.rbtReports
+  };
+}
+
+async function fetchShellConfig() {
+  if (typeof window.SHELL !== 'undefined' && typeof window.SHELL.getConfig === 'function') {
+    try {
+      return await window.SHELL.getConfig();
+    } catch (e) {
+      console.warn('[Hidden Lights] getConfig failed', e);
+    }
+  }
+  return null;
+}
 
 /* ---------- Settings panel ---------- */
 const SETTINGS_STORAGE_KEY = 'hidden_lights_fixer_settings';
@@ -10899,9 +10936,10 @@ async function runBcbaUpcomingAppointments() {
   });
 })();
 
-// Tab bar: Concurrences / BCBA reports / RBT reports (CSP-safe, no inline script)
+// Tab bar: Concurrences / BCBA reports / RBT reports — gated by config.features from POEL auth
 (function initTabs() {
   const tabBar = document.querySelector('.tab-bar');
+  const accessMsg = document.getElementById('features-access-msg');
   const panels = {
     'bcba-reports': document.getElementById('panel-bcba-reports'),
     'rbt-reports': document.getElementById('panel-rbt-reports'),
@@ -10910,25 +10948,6 @@ async function runBcbaUpcomingAppointments() {
     'ai-search': document.getElementById('panel-ai-search')
   };
   if (!tabBar) return;
-
-  const disabledPanels = {};
-  if (!ENABLE_MANUAL_MODE) disabledPanels['manual'] = true;
-  if (!ENABLE_AI_SEARCH_MODE) disabledPanels['ai-search'] = true;
-
-  tabBar.querySelectorAll('.tab').forEach((t) => {
-    const id = t.getAttribute('data-panel');
-    if (disabledPanels[id] || t.hasAttribute('hidden')) {
-      t.style.display = 'none';
-      if (panels[id]) panels[id].style.display = 'none';
-    }
-  });
-  // AI Search is not offered in Hidden Lights — keep DOM for shared code, hide panel.
-  if (panels['ai-search']) panels['ai-search'].style.display = 'none';
-
-  const visibleTabs = Array.from(tabBar.querySelectorAll('.tab')).filter(t => t.style.display !== 'none');
-  if (visibleTabs.length <= 1) {
-    tabBar.style.display = 'none';
-  }
 
   const tabs = tabBar.querySelectorAll('.tab');
 
@@ -10943,6 +10962,57 @@ async function runBcbaUpcomingAppointments() {
     });
   }
 
+  function applyDisabledPanels(disabledPanels) {
+    tabBar.querySelectorAll('.tab').forEach((t) => {
+      const id = t.getAttribute('data-panel');
+      if (disabledPanels[id] || t.hasAttribute('hidden')) {
+        t.style.display = 'none';
+        if (panels[id]) {
+          panels[id].style.display = 'none';
+          panels[id].classList.remove('active');
+        }
+      } else {
+        t.style.display = '';
+        if (panels[id]) panels[id].style.display = '';
+      }
+    });
+    // AI Search is not offered in Hidden Lights — keep DOM for shared code, hide panel.
+    if (panels['ai-search']) panels['ai-search'].style.display = 'none';
+
+    const visibleTabs = Array.from(tabBar.querySelectorAll('.tab')).filter(function (t) {
+      return t.style.display !== 'none' && !t.hasAttribute('hidden');
+    });
+    if (visibleTabs.length <= 1) {
+      tabBar.style.display = 'none';
+    } else {
+      tabBar.style.display = '';
+    }
+
+    if (accessMsg) {
+      accessMsg.style.display = visibleTabs.length === 0 ? '' : 'none';
+    }
+
+    if (visibleTabs.length === 0) {
+      Object.keys(panels).forEach(function (key) {
+        if (panels[key]) panels[key].classList.remove('active');
+      });
+      return;
+    }
+
+    var activeVisible = visibleTabs.find(function (t) {
+      return t.classList.contains('active');
+    });
+    var pick = activeVisible || visibleTabs[0];
+    var panelId = pick.getAttribute('data-panel');
+    if (panelId) showPanel(panelId);
+  }
+
+  // Sync defaults first (manual/ai off); then overlay auth features when SHELL config arrives.
+  const disabledPanels = {};
+  if (!ENABLE_MANUAL_MODE) disabledPanels['manual'] = true;
+  if (!ENABLE_AI_SEARCH_MODE) disabledPanels['ai-search'] = true;
+  applyDisabledPanels(disabledPanels);
+
   tabBar.addEventListener('click', (e) => {
     const tab = e.target.closest('.tab');
     if (!tab || tab.style.display === 'none' || tab.hasAttribute('hidden')) return;
@@ -10952,6 +11022,20 @@ async function runBcbaUpcomingAppointments() {
     if (panelId) showPanel(panelId);
     return false;
   }, true);
+
+  fetchShellConfig().then(function (config) {
+    const flags = resolveSectionFeatureFlags(config);
+    const next = Object.assign({}, disabledPanels);
+    Object.keys(FEATURE_TO_PANEL).forEach(function (featureKey) {
+      if (!flags[featureKey]) next[FEATURE_TO_PANEL[featureKey]] = true;
+    });
+    applyDisabledPanels(next);
+    try {
+      console.log('[Hidden Lights] section features', flags, config && config.features);
+    } catch (eLog) {
+      /* ignore */
+    }
+  });
 })();
 
 (function initPanelDiagnostics() {
