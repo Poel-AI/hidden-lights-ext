@@ -2,7 +2,7 @@
  * Side panel: Sig button sends drawS to the active tab's content script.
  * Logs to both console and the #log div in the panel.
  */
-const PANEL_BUILD = '2026-07-14features';
+const PANEL_BUILD = '2026-07-14featfix';
 const logEl = document.getElementById('log');
 
 (function showPanelBuild() {
@@ -16,8 +16,8 @@ const ENABLE_AI_SEARCH_MODE = false;
 
 /**
  * Config `features` → top tab panels.
- * - No `features` object (local unpacked / old API): all three on.
- * - `features` present: missing or falsy key = disabled (e.g. omit rbtReports to hide RBT).
+ * - Missing / null / empty `{}` (other clients, old API, local unpacked): all three on.
+ * - Non-empty object: missing or falsy key = disabled (e.g. omit rbtReports to hide RBT).
  */
 const FEATURE_TO_PANEL = {
   concurrences: 'auto',
@@ -27,7 +27,11 @@ const FEATURE_TO_PANEL = {
 
 function resolveSectionFeatureFlags(config) {
   var features = config && config.features;
-  if (!features || typeof features !== 'object') {
+  if (!features || typeof features !== 'object' || Array.isArray(features)) {
+    return { concurrences: true, bcbaReports: true, rbtReports: true };
+  }
+  // Empty object is falsy in some backends' "no prefs yet" — keep all sections on.
+  if (Object.keys(features).length === 0) {
     return { concurrences: true, bcbaReports: true, rbtReports: true };
   }
   return {
